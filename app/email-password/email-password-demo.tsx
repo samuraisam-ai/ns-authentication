@@ -56,7 +56,7 @@ export default function EmailPasswordDemo({ user }: EmailPasswordDemoProps) {
   return (
     <AuthDemoPage
       title="Email + Password"
-      intro="Classic credentials—users enter details, Supabase secures the rest while getSession + onAuthStateChange keep the UI live."
+      description="Classic credentials—users enter details, Supabase secures the rest while getSession + onAuthStateChange keep the UI live."
       steps={[
         "Toggle between sign up and sign in.",
         "Submit to watch the session card refresh instantly.",
@@ -161,6 +161,14 @@ export default function EmailPasswordDemo({ user }: EmailPasswordDemoProps) {
               <div className="flex items-center justify-between gap-6">
                 <dt className="text-slate-400">Email</dt>
                 <dd>{currentUser.email}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-6">
+                <dt className="text-slate-400">Last sign in</dt>
+                <dd className="text-xs text-slate-300">
+                  {currentUser.last_sign_in_at
+                    ? new Date(currentUser.last_sign_in_at).toLocaleString()
+                    : "-"}
+                </dd>
               </div>
             </dl>
 
