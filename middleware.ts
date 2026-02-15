@@ -11,6 +11,36 @@ function getEnvironmentVariables() {
   return { supabaseUrl, supabaseAnonKey };
 }
 
+function getAllowlists() {
+  const rawEmails = process.env.ALLOWED_EMAILS ?? "";
+  const rawDomains = process.env.ALLOWED_DOMAINS ?? "";
+
+  const emails = rawEmails
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  const domains = rawDomains
+    .split(",")
+    .map((domain) => domain.trim().toLowerCase())
+    .filter(Boolean);
+
+  return { emails, domains };
+}
+
+function isAllowlisted(email: string | null | undefined) {
+  const { emails, domains } = getAllowlists();
+  if (emails.length === 0 && domains.length === 0) return true;
+  if (!email) return false;
+
+  const normalizedEmail = email.toLowerCase();
+  if (emails.includes(normalizedEmail)) return true;
+
+  return domains.some((domain) => {
+    const normalized = domain.startsWith("@") ? domain.slice(1) : domain;
+    return normalizedEmail.endsWith(`@${normalized}`);
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const { supabaseUrl, supabaseAnonKey } = getEnvironmentVariables();
   const response = NextResponse.next();
@@ -32,7 +62,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith("/protected")) {
+  if (!user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/email-password";
 
@@ -41,5 +71,19 @@ export async function middleware(request: NextRequest) {
     return redirectResponse;
   }
 
+  if (!isAllowlisted(user.email)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/email-password";
+    redirectUrl.searchParams.set("error", "unauthorized");
+
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
+  }
+
   return response;
 }
+
+export const config = {
+  matcher: ["/workspace/:path*"],
+};

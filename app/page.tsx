@@ -1,96 +1,190 @@
 import Link from "next/link";
 
-const demos = [
-  {
-    href: "/email-password",
-    title: "Email + Password",
-    description: "Classic credentials flow with Supabase-managed sessions and a React listener that never goes stale.",
-    highlights: ["Toggle sign in/sign up", "Show the session panel", "Explain password rules"],
-    theme: {
-      card:
-        "border border-emerald-400/30 bg-gradient-to-br from-[#0a2416] via-[#04130d] to-[#0f3022] shadow-[0_30px_70px_rgba(2,6,23,0.65)] hover:border-emerald-300/60",
-      open: "text-emerald-300",
-      title: "text-emerald-100",
-      bullets: "text-emerald-200/90",
-      overlays: [
-        "pointer-events-none absolute -left-8 -top-6 -z-10 h-20 w-32 rounded-full bg-[radial-gradient(circle,_rgba(16,185,129,0.18),_transparent)] blur-lg",
-        "pointer-events-none absolute bottom-4 right-4 -z-10 h-16 w-32 rounded-full bg-[linear-gradient(150deg,_rgba(45,212,191,0.25),_rgba(59,130,246,0.12))] blur-lg",
-      ],
-    },
-  },
+const logoUrl =
+  "https://res.cloudinary.com/dtjysgyny/image/upload/v1771108693/Untitled_design-5_fbkcop.png";
+
+const flows = [
   {
     href: "/google-login",
     title: "Google Login",
-    description: "Demonstrate social login via signInWithOAuth plus the automatic UI sync powered by onAuthStateChange.",
+    description:
+      "Social login via signInWithOAuth with automatic UI sync powered by onAuthStateChange.",
     highlights: ["Redirect URLs", "Call signInWithOAuth", "Watch session update"],
-    theme: {
-      card:
-        "border border-[#5a8dee]/30 bg-gradient-to-br from-[#060f24] via-[#07122e] to-[#0f2346] shadow-[0_30px_70px_rgba(2,6,23,0.65)] hover:border-[#7fb0ff]/60",
-      open: "text-[#8ab4ff]",
-      title: "text-[#bcd7ff]",
-      bullets: "text-[#9fc1ff]",
-      overlays: [
-        "pointer-events-none absolute -right-8 -top-6 -z-10 h-16 w-16 rounded-full bg-[radial-gradient(circle,_rgba(66,133,244,0.3),_rgba(234,67,53,0.06))] blur-lg",
-        "pointer-events-none absolute bottom-4 left-6 -z-10 h-12 w-32 rounded-full bg-[linear-gradient(120deg,_rgba(251,188,5,0.18),_rgba(66,133,244,0.12))] blur-lg",
-      ],
-    },
+    accent: "blue" as const,
+  },
+  {
+    href: "/email-password",
+    title: "Email + Password",
+    description:
+      "Classic credentials flow with Supabase-managed sessions and a React listener that never goes stale.",
+    highlights: ["Toggle sign in/sign up", "Show the session panel", "Explain password rules"],
+    accent: "green" as const,
   },
 ] as const;
 
+function FlowCard({
+  href,
+  title,
+  description,
+  highlights,
+  accent,
+}: {
+  href: string;
+  title: string;
+  description: string;
+  highlights: readonly string[];
+  accent: "green" | "blue";
+}) {
+  const ring =
+    accent === "green" ? "ring-emerald-500/15 hover:ring-emerald-500/25" : "ring-slate-900/10 hover:ring-slate-900/15";
+  const bar = accent === "green" ? "bg-emerald-500" : "bg-slate-900";
+  const chip =
+    accent === "green"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"
+      : "border-slate-900/20 bg-slate-900/5 text-slate-700";
+
+  return (
+    <Link
+      href={href}
+      className={`group block rounded-3xl bg-white p-6 shadow-[0_18px_55px_rgba(2,6,23,0.08)] ring-1 ${ring} transition hover:-translate-y-0.5`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Flow
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
+            {title}
+          </h3>
+        </div>
+
+        <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${chip}`}>
+          Open <span aria-hidden="true">↗</span>
+        </span>
+      </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-slate-600">{description}</p>
+
+      <div className="mt-5 flex items-center gap-3">
+        <span className={`h-1.5 w-1.5 rounded-full ${bar}`} />
+        <p className="text-xs font-semibold text-slate-500">What you’ll test</p>
+      </div>
+
+      <ul className="mt-3 space-y-2 text-sm text-slate-700">
+        {highlights.map((h) => (
+          <li key={h} className="flex items-start gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/70" />
+            <span className="leading-snug">{h}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-6 flex items-center justify-between">
+        <p className="text-xs text-slate-500">
+          Route: <span className="font-mono text-slate-700">{href}</span>
+        </p>
+        <span className="text-xs font-semibold text-slate-400 transition group-hover:text-slate-600">
+          Launch
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#02050b] via-[#050c1d] to-[#071426] text-slate-100">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-6 py-16">
-        <header className="space-y-4">
-          <p className="text-sm uppercase tracking-[0.25em] text-emerald-300/90">
-            Supabase × Next.js
-          </p>
-          <h1 className="text-4xl font-semibold text-white drop-shadow-sm">
-            Two auth flows.
-          </h1>
-          <p className="text-base text-slate-400">
-            Production-ready Supabase auth blueprints with real session listeners.
-          </p>
-        </header>
-        <section className="grid gap-6 md:grid-cols-3">
-          {demos.map((demo) => {
-            const theme = demo.theme;
-            return (
-              <Link
-                key={demo.href}
-                href={demo.href}
-                className={`group relative isolate flex flex-col overflow-hidden rounded-[32px] p-6 transition hover:-translate-y-1 ${
-                  theme?.card ??
-                  "border border-white/5 bg-slate-900/60 shadow-[0_30px_70px_rgba(2,6,23,0.65)] hover:border-emerald-300/50"
-                }`}
-              >
-                {theme?.overlays?.map((overlayClass, index) => (
-                  <span key={index} className={overlayClass} aria-hidden="true" />
-                ))}
-                <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Flow</p>
-                  <span className={`text-sm font-semibold ${theme?.open ?? "text-emerald-300"}`}>
-                    Open ↗
-                  </span>
-                </div>
-                <h3
-                  className={`mt-4 text-xl font-semibold ${
-                    theme?.title ?? "text-white"
-                  } transition group-hover:opacity-95`}
-                >
-                  {demo.title}
-                </h3>
-                <p className="mt-2 text-sm text-slate-300">{demo.description}</p>
-                <ul className={`mt-4 space-y-1 text-xs ${theme?.bullets ?? "text-slate-400"}`}>
-                  {demo.highlights.map((highlight) => (
-                    <li key={highlight}>• {highlight}</li>
-                  ))}
-                </ul>
-              </Link>
-            );
-          })}
-        </section>
+    <main className="min-h-screen bg-white text-slate-900">
+      {/* subtle futuristic background */}
+      <div className="pointer-events-none fixed inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(16,185,129,0.16),transparent_35%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_35%,rgba(2,6,23,0.08),transparent_40%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.02),transparent_30%,rgba(2,6,23,0.02))]" />
       </div>
-    </div>
+
+      <div className="relative mx-auto w-full max-w-6xl px-6 py-12">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
+          {/* LEFT: tall welcome card */}
+          <section className="rounded-[32px] bg-white p-8 shadow-[0_22px_70px_rgba(2,6,23,0.10)] ring-1 ring-slate-900/10">
+            <div className="flex items-center gap-3">
+              <img src={logoUrl} alt="Logo" className="h-11 w-11 rounded-xl object-contain" />
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
+                  Internal Auth Console
+                </p>
+                <p className="text-sm font-semibold text-slate-900">Supabase × Next.js</p>
+              </div>
+            </div>
+
+            <h1 className="mt-7 text-4xl font-semibold tracking-tight">
+              Welcome.
+            </h1>
+
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600">
+              This workspace contains two production-ready authentication flows.
+              Routes and session wiring are already connected — you can safely iterate on UI.
+            </p>
+
+            <div className="mt-7 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Guardrails
+                </p>
+                <p className="mt-2 text-sm text-slate-700">
+                  Keep auth logic isolated.
+                  Change UI freely.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                  Accent
+                </p>
+                <p className="mt-2 text-sm text-slate-700">
+                  White base.
+                  Green highlights.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7 rounded-2xl border border-slate-900/10 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Quick start</p>
+              <ol className="mt-3 space-y-2 text-sm text-slate-700">
+                <li className="flex gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Open a flow on the right.
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Edit UI components only (routes stay stable).
+                </li>
+                <li className="flex gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Run the smoke test after each change.
+                </li>
+              </ol>
+            </div>
+
+            <div className="mt-7 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-slate-900/10 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                Minimal
+              </span>
+              <span className="inline-flex items-center rounded-full border border-slate-900/10 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                Sleek
+              </span>
+              <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Futuristic
+              </span>
+            </div>
+          </section>
+
+          {/* RIGHT: two stacked cards (center-right) */}
+          <section className="flex w-full justify-center lg:justify-end">
+            <div className="w-full max-w-md space-y-6">
+              <FlowCard {...flows[0]} />
+              <FlowCard {...flows[1]} />
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
   );
 }
