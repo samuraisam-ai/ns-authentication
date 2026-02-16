@@ -11,29 +11,26 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  created_at?: string;
 };
 
-type ChatLogPayload = {
-  event_id: string;
-  direction: "send" | "receive" | "error";
-  message: string;
-  message_id: string;
-  request_id: string;
-  route: string;
-  occurred_at: string;
-  user: { id: string | null; email: string | null };
+type Session = {
+  id: string;
+  title: string;
+  updated_at: string;
 };
 
 export default function WorkspaceClient({ user: initialUser }: Props) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
-  const [messages, setMessages] = useState<Message[]>([
-    { id: "1", role: "assistant", content: "Hello! How can I help you today?" },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     setMounted(true);
@@ -46,6 +43,64 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setSessions([]);
+      setActiveSessionId(null);
+      setMessages([]);
+      return;
+    }
+
+    void loadSessions({ selectFirstIfEmpty: true });
+  }, [currentUser]);
+
+  async function loadSessions(options?: { selectFirstIfEmpty?: boolean; preferredSessionId?: string }) {
+    setStatus("");
+    try {
+      const res = await fetch("/api/chat/sessions");
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Failed to load sessions (${res.status}): ${errText}`);
+      }
+      const data = (await res.json()) as { sessions?: Session[] };
+      const nextSessions = data.sessions ?? [];
+      setSessions(nextSessions);
+
+      const preferredId = options?.preferredSessionId ?? activeSessionId;
+
+      if (preferredId) {
+        return;
+      }
+
+      if (options?.selectFirstIfEmpty && nextSessions[0]) {
+        setActiveSessionId(nextSessions[0].id);
+        await loadHistory(nextSessions[0].id);
+      } else if (nextSessions.length === 0) {
+        setActiveSessionId(null);
+        setMessages([]);
+      }
+    } catch (error) {
+      setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function loadHistory(sessionId: string) {
+    setStatus("");
+    try {
+      const res = await fetch(`/api/chat/history?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Failed to load history (${res.status}): ${errText}`);
+      }
+      const data = (await res.json()) as {
+        messages?: Message[];
+      };
+      setMessages(data.messages ?? []);
+    } catch (error) {
+      setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   async function handleSignOut() {
     setStatus("");
@@ -66,31 +121,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     setInput("");
     setIsLoading(true);
 
-    const event_id = crypto.randomUUID();
-    const message_id = crypto.randomUUID();
-    const request_id = crypto.randomUUID();
-
-    const payload: ChatLogPayload = {
-      event_id,
-      direction: "send",
-      message,
-      message_id,
-      request_id,
-      route: "/workspace",
-      occurred_at: new Date().toISOString(),
-      user: {
-        id: currentUser?.id ?? null,
-        email: currentUser?.email ?? null,
-      },
-    };
-
     try {
-      const res = await fetch("/api/chat-log", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ message, sessionId: activeSessionId ?? undefined }),
       });
 
       if (!res.ok) {
@@ -98,9 +135,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         throw new Error(`Webhook failed (${res.status}): ${errText}`);
       }
 
-      const data = await res.json();
-
+      const data = (await res.json()) as { reply?: string; sessionId?: string };
       const botReply = String(data.reply ?? "No reply returned");
+      const nextSessionId = data.sessionId ?? activeSessionId;
+
+      if (!activeSessionId && nextSessionId) {
+        setActiveSessionId(nextSessionId);
+      }
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -110,28 +151,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
       setMessages((prev) => [...prev, botMessage]);
 
-      // Log the bot reply
-      const receivePayload: ChatLogPayload = {
-        event_id: crypto.randomUUID(),
-        direction: "receive",
-        message: botReply,
-        message_id: crypto.randomUUID(),
-        request_id,
-        route: "/workspace",
-        occurred_at: new Date().toISOString(),
-        user: {
-          id: currentUser?.id ?? null,
-          email: currentUser?.email ?? null,
-        },
-      };
-
-      void fetch("/api/chat-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(receivePayload),
-      }).catch((error) => {
-        console.warn("Failed to log receive event", error);
-      });
+      await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
@@ -143,6 +163,26 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       ]);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleNewChat() {
+    setStatus("");
+    try {
+      const res = await fetch("/api/chat/session", { method: "POST" });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Failed to create session (${res.status}): ${errText}`);
+      }
+      const data = (await res.json()) as { sessionId: string };
+      setActiveSessionId(data.sessionId);
+      setSessions((prev) => [
+        { id: data.sessionId, title: "New chat", updated_at: new Date().toISOString() },
+        ...prev,
+      ]);
+      setMessages([]);
+    } catch (error) {
+      setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -175,34 +215,98 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             {/* Main Workspace */}
             <div className="mt-4 flex h-[calc(100vh-120px)] gap-6">
               {/* Sidebar */}
-              <div className="w-64 rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  User Info
-                </p>
-                {currentUser ? (
-                  <div className="mt-4 space-y-3 text-sm">
-                    <div>
-                      <p className="text-xs text-slate-500">Email</p>
-                      <p className="truncate font-medium text-slate-900">{currentUser.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">User ID</p>
-                      <p className="max-w-[14rem] truncate font-mono text-xs text-slate-700">
-                        {currentUser.id}
+              <div
+                className={`rounded-2xl border border-slate-900/10 bg-slate-50 p-4 transition-all duration-200 ${
+                  sidebarOpen ? "w-72" : "w-16"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  {sidebarOpen ? (
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      Sessions
+                    </p>
+                  ) : null}
+                  <button
+                    onClick={() => setSidebarOpen((prev) => !prev)}
+                    className="rounded-full border border-slate-900/10 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    {sidebarOpen ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+
+                {sidebarOpen ? (
+                  <>
+                    <button
+                      onClick={handleNewChat}
+                      className="mt-3 w-full rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400"
+                    >
+                      New Chat
+                    </button>
+
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        Recent
                       </p>
+                      <div className="mt-3 space-y-2">
+                        {sessions.length === 0 ? (
+                          <p className="text-xs text-slate-500">No sessions yet</p>
+                        ) : (
+                          sessions.map((session) => (
+                            <button
+                              key={session.id}
+                              onClick={() => {
+                                setActiveSessionId(session.id);
+                                void loadHistory(session.id);
+                              }}
+                              className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                                session.id === activeSessionId
+                                  ? "bg-emerald-500 text-white"
+                                  : "border border-slate-900/10 bg-white text-slate-700 hover:bg-slate-100"
+                              }`}
+                            >
+                              <p className="truncate font-medium">{session.title || "New chat"}</p>
+                              <p className="mt-1 text-xs opacity-70">
+                                {new Date(session.updated_at).toLocaleDateString()}
+                              </p>
+                            </button>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Last sign in</p>
-                      <p className="text-slate-800">
-                        {currentUser?.last_sign_in_at
-                          ? new Date(currentUser.last_sign_in_at).toLocaleString()
-                          : "N/A"}
+
+                    <div className="mt-6 border-t border-slate-900/10 pt-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        User Info
                       </p>
+                      {currentUser ? (
+                        <div className="mt-4 space-y-3 text-sm">
+                          <div>
+                            <p className="text-xs text-slate-500">Email</p>
+                            <p className="truncate font-medium text-slate-900">
+                              {currentUser.email}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">User ID</p>
+                            <p className="max-w-[14rem] truncate font-mono text-xs text-slate-700">
+                              {currentUser.id}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Last sign in</p>
+                            <p className="text-slate-800">
+                              {currentUser?.last_sign_in_at
+                                ? new Date(currentUser.last_sign_in_at).toLocaleString()
+                                : "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-sm text-slate-500">Not authenticated</p>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <p className="mt-4 text-sm text-slate-500">Not authenticated</p>
-                )}
+                  </>
+                ) : null}
               </div>
 
               {/* Chat Area */}
@@ -254,6 +358,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                       <button
                         onClick={() => handleSendMessage(input)}
                         className="rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        disabled={isLoading}
                       >
                         Send
                       </button>
