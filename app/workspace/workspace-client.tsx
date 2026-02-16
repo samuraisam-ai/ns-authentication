@@ -7,48 +7,22 @@ import Link from "next/link";
 
 type Props = { user: User | null };
 
-type ChatEvent = {
-  type: "send" | "receive" | "error";
-  messageId: string;
-  content: string;
-};
-
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
 };
 
-function logChatEvent(event: ChatEvent) {
-  const timestamp = new Date().toISOString();
-  const preview = event.content.slice(0, 120);
-  const requestId = crypto.randomUUID();
-  const chatEvent = {
-    message: preview ?? "",
-    meta: {
-      type: event.type,
-      messageId: event.messageId,
-      timestamp,
-      requestId,
-      route: "/workspace",
-    },
-  };
-  console.groupCollapsed(`[chat] ${event.type} ${event.messageId}`);
-  console.log("timestamp:", timestamp);
-  console.log("type:", event.type);
-  console.log("messageId:", event.messageId);
-  console.log("preview:", preview);
-  console.log("[chat] requestId", requestId);
-  console.groupEnd();
-
-  void fetch("/api/chat-log", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(chatEvent),
-  }).catch((error) => {
-    console.warn("Failed to log chat event", error);
-  });
-}
+type ChatLogPayload = {
+  event_id: string;
+  direction: "send" | "receive" | "error";
+  message: string;
+  message_id: string;
+  request_id: string;
+  route: string;
+  occurred_at: string;
+  user: { id: string | null; email: string | null };
+};
 
 export default function WorkspaceClient({ user: initialUser }: Props) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -92,19 +66,31 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     setInput("");
     setIsLoading(true);
 
+    const event_id = crypto.randomUUID();
+    const message_id = crypto.randomUUID();
+    const request_id = crypto.randomUUID();
+
+    const payload: ChatLogPayload = {
+      event_id,
+      direction: "send",
+      message,
+      message_id,
+      request_id,
+      route: "/workspace",
+      occurred_at: new Date().toISOString(),
+      user: {
+        id: currentUser?.id ?? null,
+        email: currentUser?.email ?? null,
+      },
+    };
+
     try {
       const res = await fetch("/api/chat-log", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message,
-          user: {
-            id: currentUser?.id,
-            email: currentUser?.email,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -114,13 +100,38 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
       const data = await res.json();
 
+      const botReply = String(data.reply ?? "No reply returned");
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: String(data.reply ?? "No reply returned"),
+        content: botReply,
       };
 
       setMessages((prev) => [...prev, botMessage]);
+
+      // Log the bot reply
+      const receivePayload: ChatLogPayload = {
+        event_id: crypto.randomUUID(),
+        direction: "receive",
+        message: botReply,
+        message_id: crypto.randomUUID(),
+        request_id,
+        route: "/workspace",
+        occurred_at: new Date().toISOString(),
+        user: {
+          id: currentUser?.id ?? null,
+          email: currentUser?.email ?? null,
+        },
+      };
+
+      void fetch("/api/chat-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(receivePayload),
+      }).catch((error) => {
+        console.warn("Failed to log receive event", error);
+      });
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
