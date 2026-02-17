@@ -105,15 +105,27 @@ export async function POST(request: Request) {
 
   let reply = "No response";
 
+  const request_id = crypto.randomUUID();
+  const envelopePayload = {
+    id: crypto.randomUUID(),
+    user_id: user.id,
+    direction: "send",
+    message,
+    request_id,
+    route: "/api/chat",
+    created_at: new Date().toISOString(),
+    chat_events: { body: { message, sessionId } },
+    identity: { id: user.id, email: user.email },
+    sessionId,
+  };
+
+  console.log("[chat] n8n request", { request_id, sessionId });
+
   try {
     const webhookResponse = await fetch(webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        message,
-        identity: { id: user.id, email: user.email },
-        sessionId,
-      }),
+      body: JSON.stringify(envelopePayload),
     });
 
     const rawText = await webhookResponse.text();
