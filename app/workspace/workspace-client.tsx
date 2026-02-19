@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Props = { user: User | null };
 
@@ -21,6 +22,7 @@ type Session = {
 };
 
 export default function WorkspaceClient({ user: initialUser }: Props) {
+  const router = useRouter();
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -31,6 +33,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
 
   useEffect(() => {
     setMounted(true);
@@ -49,11 +52,34 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       setSessions([]);
       setActiveSessionId(null);
       setMessages([]);
+      setPendingTaskCount(0);
       return;
     }
 
     void loadSessions({ selectFirstIfEmpty: true });
+    void fetchPendingTaskCount();
   }, [currentUser]);
+
+  async function fetchPendingTaskCount() {
+    if (!currentUser?.id) {
+      setPendingTaskCount(0);
+      return;
+    }
+
+    try {
+      const { count, error } = await supabase
+        .from("checkin_tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", currentUser.id)
+        .in("status", ["pending", "overdue"]);
+
+      if (!error && count !== null) {
+        setPendingTaskCount(count);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pending task count:", err);
+    }
+  }
 
   async function loadSessions(options?: { selectFirstIfEmpty?: boolean; preferredSessionId?: string }) {
     setStatus("");
@@ -245,7 +271,24 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
                     <div className="mt-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        Recent
+                        Tasks
+                      </p>
+                      <button
+                        onClick={() => router.push("/tasks")}
+                        className="relative mt-3 w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <span className="font-medium">Tasks</span>
+                        {pendingTaskCount > 0 && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                            {pendingTaskCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        Chats
                       </p>
                       <div className="mt-3 space-y-2">
                         {sessions.length === 0 ? (
@@ -272,38 +315,6 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                           ))
                         )}
                       </div>
-                    </div>
-
-                    <div className="mt-6 border-t border-slate-900/10 pt-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        User Info
-                      </p>
-                      {currentUser ? (
-                        <div className="mt-4 space-y-3 text-sm">
-                          <div>
-                            <p className="text-xs text-slate-500">Email</p>
-                            <p className="truncate font-medium text-slate-900">
-                              {currentUser.email}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-500">User ID</p>
-                            <p className="max-w-[14rem] truncate font-mono text-xs text-slate-700">
-                              {currentUser.id}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-slate-500">Last sign in</p>
-                            <p className="text-slate-800">
-                              {currentUser?.last_sign_in_at
-                                ? new Date(currentUser.last_sign_in_at).toLocaleString()
-                                : "N/A"}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="mt-4 text-sm text-slate-500">Not authenticated</p>
-                      )}
                     </div>
                   </>
                 ) : null}
