@@ -37,7 +37,18 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json(tasks || []);
+    const mappedTasks = (tasks || []).map((row: any) => ({
+      id: row.id,
+      status: row.status,
+      scheduled_for: row.scheduled_for,
+      sent_at: row.sent_at,
+      submitted_at: row.submitted_at,
+      period_key: row.period_key,
+      template_key: row.template?.template_key ?? null,
+      template_title: row.template?.title ?? null,
+    }));
+
+    return NextResponse.json({ tasks: mappedTasks });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error("GET /api/tasks error:", errorMessage, err);

@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 interface Task {
   id: string;
   user_id: string;
-  template_key: string;
+  template_key?: string | null;
+  template_title?: string | null;
   status: string;
   scheduled_for: string;
   created_at: string;
@@ -94,7 +95,7 @@ export default function CheckinTaskClient({
 
       <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded">
         <p className="text-sm text-gray-600">
-          <strong>Template:</strong> {task.template_key}
+          <strong>Template:</strong> {task.template_title || task.template_key || "No template assigned"}
         </p>
         <p className="text-sm text-gray-600">
           <strong>Status:</strong> {task.status}
@@ -108,6 +109,10 @@ export default function CheckinTaskClient({
       {task.status === "submitted" ? (
         <div className="p-4 bg-green-50 border border-green-200 rounded text-green-800">
           This task has already been submitted.
+        </div>
+      ) : !task.template_key ? (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
+          Task has no template assigned.
         </div>
       ) : (
         <FormRenderer
@@ -383,7 +388,8 @@ function FormRenderer({
 
   return (
     <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
-      Unknown template: {templateKey}
+      <p className="font-semibold mb-2">Unknown template: {templateKey}</p>
+      <p className="text-sm">This template is not currently supported. Please contact support if you need assistance.</p>
     </div>
   );
 }

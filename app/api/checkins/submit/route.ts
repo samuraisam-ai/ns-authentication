@@ -36,6 +36,27 @@ export async function POST(req: Request) {
     .single();
 
   if (taskError || !task) {
+    if (taskError) {
+      console.error("Failed to fetch task:", {
+        where: "POST /api/checkins/submit - fetch task",
+        message: taskError.message,
+        details: taskError.details,
+        hint: taskError.hint,
+        code: taskError.code,
+      });
+      return NextResponse.json(
+        {
+          error: "Failed to fetch task",
+          supabase: {
+            message: taskError.message,
+            details: taskError.details,
+            hint: taskError.hint,
+            code: taskError.code,
+          },
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: "Task not found or unauthorized" },
       { status: 404 }
@@ -43,10 +64,12 @@ export async function POST(req: Request) {
   }
 
   if (task.status === "submitted") {
-    return NextResponse.json(
-      { error: "Task already submitted" },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      ok: true,
+      alreadySubmitted: true,
+      submissionId: null,
+      message: "Check-in already submitted",
+    });
   }
 
   // Insert into checkin_submissions
@@ -57,13 +80,67 @@ export async function POST(req: Request) {
       id: submissionId,
       task_id: taskId,
       user_id: user.id,
-      answers,
-      submitted_at: new Date().toISOString(),
+      answers_json: answers,
     });
 
   if (insertError) {
+    if (insertError.code === "23505") {
+      const { error: duplicateUpdateError } = await supabase
+        .from("checkin_tasks")
+        .update({
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+        })
+        .eq("id", taskId)
+        .eq("user_id", user.id);
+
+      if (duplicateUpdateError) {
+        console.error("Failed to update task status after duplicate:", {
+          where: "POST /api/checkins/submit - update task status (duplicate)",
+          message: duplicateUpdateError.message,
+          details: duplicateUpdateError.details,
+          hint: duplicateUpdateError.hint,
+          code: duplicateUpdateError.code,
+        });
+        return NextResponse.json(
+          {
+            error: "Failed to update task status",
+            supabase: {
+              message: duplicateUpdateError.message,
+              details: duplicateUpdateError.details,
+              hint: duplicateUpdateError.hint,
+              code: duplicateUpdateError.code,
+            },
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        alreadySubmitted: true,
+        submissionId: null,
+        message: "Check-in already submitted",
+      });
+    }
+
+    console.error("Failed to insert submission:", {
+      where: "POST /api/checkins/submit - insert submission",
+      message: insertError.message,
+      details: insertError.details,
+      hint: insertError.hint,
+      code: insertError.code,
+    });
     return NextResponse.json(
-      { error: "Failed to insert submission", detail: insertError.message },
+      {
+        error: "Failed to insert submission",
+        supabase: {
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code,
+        },
+      },
       { status: 500 }
     );
   }
@@ -79,8 +156,23 @@ export async function POST(req: Request) {
     .eq("user_id", user.id);
 
   if (updateError) {
+    console.error("Failed to update task status:", {
+      where: "POST /api/checkins/submit - update task status",
+      message: updateError.message,
+      details: updateError.details,
+      hint: updateError.hint,
+      code: updateError.code,
+    });
     return NextResponse.json(
-      { error: "Failed to update task status", detail: updateError.message },
+      {
+        error: "Failed to update task status",
+        supabase: {
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          code: updateError.code,
+        },
+      },
       { status: 500 }
     );
   }
