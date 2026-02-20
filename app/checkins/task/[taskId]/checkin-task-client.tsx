@@ -70,7 +70,8 @@ export default function CheckinTaskClient({
       }
 
       alert("Check-in submitted successfully!");
-      router.push("/inbox");
+      router.replace("/tasks");
+      router.refresh();
     } catch (err) {
       alert("Failed to submit check-in");
       setSubmitting(false);
