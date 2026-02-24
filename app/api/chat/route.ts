@@ -1,102 +1,169 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server-client";
 
-function getAllowlists() {
-  const rawEmails = process.env.ALLOWED_EMAILS ?? "";
-  const rawDomains = process.env.ALLOWED_DOMAINS ?? "";
+type ChatRequestBody = {
+  message?: string;
+  sessionId?: string;
+};
 
-  const emails = rawEmails
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-  const domains = rawDomains
-    .split(",")
-    .map((domain) => domain.trim().toLowerCase())
-    .filter(Boolean);
+type N8nResponse = {
+  reply?: string;
+};
 
-  return { emails, domains };
+function normalizeMessage(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
-function isAllowlisted(email: string | null | undefined) {
-  const { emails, domains } = getAllowlists();
-  if (emails.length === 0 && domains.length === 0) return true;
-  if (!email) return false;
+function parseN8nReply(rawText: string): string {
+  if (!rawText) return "No response";
 
-  const normalizedEmail = email.toLowerCase();
-  if (emails.includes(normalizedEmail)) return true;
+  try {
+    const parsed = JSON.parse(rawText) as N8nResponse | unknown;
+    if (parsed && typeof parsed === "object" && "reply" in parsed) {
+      const reply = (parsed as N8nResponse).reply;
+      if (typeof reply === "string" && reply.trim()) return reply.trim();
+    }
+  } catch {
+    // Non-JSON response, fall back to text.
+  }
 
-  return domains.some((domain) => {
-    const normalized = domain.startsWith("@") ? domain.slice(1) : domain;
-    return normalizedEmail.endsWith(`@${normalized}`);
-  });
+  const text = rawText.trim();
+  return text.length > 0 ? text : "No response";
 }
 
-function getWebhookConfig() {
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
-  const webhookSecret = process.env.N8N_WEBHOOK_SECRET;
-
-  if (!webhookUrl) throw new Error("Missing N8N_WEBHOOK_URL");
-  if (!webhookSecret) throw new Error("Missing N8N_WEBHOOK_SECRET");
-
-  return { webhookUrl, webhookSecret };
+function truncateTitle(message: string) {
+  return message.length > 48 ? message.slice(0, 48) : message;
 }
 
 export async function POST(request: Request) {
-  const reqId = crypto.randomUUID();
-  const startedAt = Date.now();
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as ChatRequestBody;
+  const message = normalizeMessage(body.message);
+
+  if (!message) {
+    return NextResponse.json({ error: "Message is required" }, { status: 400 });
+  }
+
+  const webhookUrl = process.env.N8N_WEBHOOK_URL;
+  if (!webhookUrl) {
+    return NextResponse.json({ error: "Missing N8N_WEBHOOK_URL" }, { status: 500 });
+  }
+
+  let sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+
+  if (!sessionId) {
+    const { data: session, error } = await supabase
+      .from("chat_sessions")
+      .insert({ user_id: user.id, title: "New chat" })
+      .select("id")
+      .single();
+
+    if (error || !session) {
+      console.error("[chat] Failed to create session:", error?.message ?? "unknown_error");
+      return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
+    }
+
+    sessionId = session.id;
+  }
+
+  const { data: sessionCheck, error: sessionError } = await supabase
+    .from("chat_sessions")
+    .select("id, title")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (sessionError) {
+    console.error("[chat] Failed to verify session:", sessionError.message);
+    return NextResponse.json({ error: "Failed to verify session" }, { status: 500 });
+  }
+
+  if (!sessionCheck) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  const { error: insertUserError } = await supabase.from("chat_messages").insert({
+    session_id: sessionId,
+    user_id: user.id,
+    role: "user",
+    content: message,
+  });
+
+  if (insertUserError) {
+    console.error("[chat] Failed to store user message:", insertUserError.message);
+    return NextResponse.json({ error: "Failed to store message" }, { status: 500 });
+  }
+
+  let reply = "No response";
+
+  const request_id = crypto.randomUUID();
+  const envelopePayload = {
+    id: crypto.randomUUID(),
+    user_id: user.id,
+    direction: "send",
+    message,
+    request_id,
+    route: "/api/chat",
+    created_at: new Date().toISOString(),
+    chat_events: { body: { message, sessionId } },
+    identity: { id: user.id, email: user.email },
+    sessionId,
+  };
+
+  console.log("[chat] n8n request", { request_id, sessionId });
 
   try {
-    const body = (await request.json().catch(() => ({}))) as { message?: string };
-    const message = typeof body.message === "string" ? body.message : "";
-    const messageLen = message.length;
-    const preview = message.slice(0, 80);
-
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      console.log(`[chat] reqId=${reqId} user=unknown messageLen=${messageLen} preview="${preview}"`);
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!isAllowlisted(user.email)) {
-      console.log(`[chat] reqId=${reqId} user=${user.email ?? user.id} messageLen=${messageLen} preview="${preview}"`);
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    console.log(`[chat] reqId=${reqId} user=${user.email ?? user.id} messageLen=${messageLen} preview="${preview}"`);
-
-    const { webhookUrl, webhookSecret } = getWebhookConfig();
     const webhookResponse = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-webhook-secret": webhookSecret,
-      },
-      body: JSON.stringify({ message, user: { id: user.id, email: user.email } }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(envelopePayload),
     });
 
+    const rawText = await webhookResponse.text();
+
     if (!webhookResponse.ok) {
-      throw new Error(`n8n_error status=${webhookResponse.status}`);
+      return NextResponse.json({ error: "n8n_failed", sessionId }, { status: 502 });
     }
 
-    const responsePayload = (await webhookResponse.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-    const responseKeys = Object.keys(responsePayload);
-    const durationMs = Date.now() - startedAt;
-
-    console.log(
-      `[chat] reqId=${reqId} ok durationMs=${durationMs} responseKeys=${responseKeys.join(",")}`
-    );
-
-    return NextResponse.json(responsePayload);
+    reply = parseN8nReply(rawText);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[chat] reqId=${reqId} error=${message}`);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error("[chat] n8n request failed:", error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ error: "n8n_failed", sessionId }, { status: 502 });
   }
+
+  const { error: insertAssistantError } = await supabase.from("chat_messages").insert({
+    session_id: sessionId,
+    user_id: user.id,
+    role: "assistant",
+    content: reply,
+  });
+
+  if (insertAssistantError) {
+    console.error("[chat] Failed to store assistant message:", insertAssistantError.message);
+    return NextResponse.json({ error: "Failed to store reply" }, { status: 500 });
+  }
+
+  if (sessionCheck.title === "New chat") {
+    const nextTitle = truncateTitle(message);
+    const { error: updateError } = await supabase
+      .from("chat_sessions")
+      .update({ title: nextTitle })
+      .eq("id", sessionId)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("[chat] Failed to update title:", updateError.message);
+    }
+  }
+
+  return NextResponse.json({ reply, sessionId });
 }

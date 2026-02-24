@@ -8,3 +8,5 @@ export default async function WorkspacePage() {
 
   return <WorkspaceClient user={user as User | null} />;
 }
+
+

@@ -85,5 +85,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/workspace/:path*"],
+  matcher: ["/workspace/:path*", "/tasks/:path*"],
 };
