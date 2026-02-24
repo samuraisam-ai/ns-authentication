@@ -9,13 +9,7 @@ export default async function InboxPage() {
     error,
   } = await supabase.auth.getUser();
 
-  if (error || !user) {
-    redirect("/");
-  }
+  if (error || !user) redirect("/");
 
-  return (
-    <div className="min-h-screen p-8">
-      <InboxClient userId={user.id} />
-    </div>
-  );
+  return <InboxClient userId={user.id} />;
 }

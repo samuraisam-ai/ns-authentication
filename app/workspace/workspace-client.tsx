@@ -25,7 +25,6 @@ function cx(...classes: Array<string | false | undefined | null>) {
 }
 
 function Badge({ value }: { value: number }) {
-  if (value <= 0) return null;
   return (
     <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c7c85a] px-1.5 text-[11px] font-semibold text-[#0f172a]">
       {value > 99 ? "99+" : value}
@@ -52,15 +51,12 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user ?? null);
     });
-
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
 
@@ -91,9 +87,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         .eq("user_id", currentUser.id)
         .in("status", ["pending", "overdue"]);
 
-      if (!error && count !== null) {
-        setPendingTaskCount(count);
-      }
+      if (!error && count !== null) setPendingTaskCount(count);
     } catch (err) {
       console.error("Failed to fetch pending task count:", err);
     }
@@ -222,13 +216,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   }
 
   const SidebarContent = (
-    <aside
-      className={cx(
-        "flex h-full flex-col border-r border-slate-900/10 bg-white",
-        sidebarOpenDesktop ? "w-80" : "w-20"
-      )}
-    >
-      {/* Brand */}
+    <aside className={cx("flex h-full flex-col border-r border-slate-900/10 bg-white", sidebarOpenDesktop ? "w-80" : "w-20")}>
       <div className="flex items-center gap-3 px-5 py-5">
         <div className="h-10 w-10 rounded-2xl bg-[#c7c85a]/30" />
         {sidebarOpenDesktop ? (
@@ -250,12 +238,9 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         </button>
       </div>
 
-      {/* Menu */}
       <nav className="px-3">
         {sidebarOpenDesktop ? (
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-            Menu
-          </p>
+          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
         ) : null}
 
         <div className="space-y-1">
@@ -264,10 +249,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               setMobileMenuOpen(false);
               router.push("/workspace");
             }}
-            className={cx(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
-              "bg-[#c7c85a]/20 text-slate-900"
-            )}
+            className="flex w-full items-center gap-3 rounded-xl bg-[#c7c85a]/20 px-3 py-2.5 text-sm font-medium text-slate-900"
           >
             <span className="h-2 w-2 rounded-full bg-[#c7c85a]" />
             {sidebarOpenDesktop ? <span>Workspace</span> : null}
@@ -278,9 +260,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               setMobileMenuOpen(false);
               router.push("/tasks");
             }}
-            className={cx(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-            )}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
           >
             <span className="h-2 w-2 rounded-full bg-slate-200" />
             {sidebarOpenDesktop ? <span>Tasks</span> : null}
@@ -292,9 +272,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               setMobileMenuOpen(false);
               router.push("/inbox");
             }}
-            className={cx(
-              "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-            )}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
           >
             <span className="h-2 w-2 rounded-full bg-slate-200" />
             {sidebarOpenDesktop ? <span>Inbox</span> : null}
@@ -302,27 +280,17 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         </div>
       </nav>
 
-      {/* Sessions */}
       <div className="mt-5 px-3">
         {sidebarOpenDesktop ? (
           <div className="flex items-center justify-between px-3 pb-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Chats
-            </p>
-            <button
-              onClick={handleNewChat}
-              className="rounded-xl bg-[#2f343a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
-            >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Chats</p>
+            <button onClick={handleNewChat} className="rounded-xl bg-[#2f343a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900">
               New
             </button>
           </div>
         ) : (
           <div className="flex justify-center">
-            <button
-              onClick={handleNewChat}
-              className="rounded-xl bg-[#2f343a] px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900"
-              aria-label="New chat"
-            >
+            <button onClick={handleNewChat} className="rounded-xl bg-[#2f343a] px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900" aria-label="New chat">
               +
             </button>
           </div>
@@ -350,9 +318,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                     )}
                   >
                     <p className="truncate font-medium">{session.title || "New chat"}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {new Date(session.updated_at).toLocaleDateString()}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(session.updated_at).toLocaleDateString()}</p>
                   </button>
                 );
               })
@@ -361,20 +327,14 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         ) : null}
       </div>
 
-      {/* Footer */}
       <div className="mt-auto border-t border-slate-900/10 px-5 py-4">
         {sidebarOpenDesktop ? (
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-slate-900">
-                {currentUser?.email ?? "Signed in"}
-              </p>
+              <p className="truncate text-xs font-semibold text-slate-900">{currentUser?.email ?? "Signed in"}</p>
               <p className="text-[11px] text-slate-500">Premium • Familiar • Fast</p>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
+            <button onClick={handleSignOut} className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
               Sign out
             </button>
           </div>
@@ -395,17 +355,14 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     <main className="min-h-screen bg-white text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          {/* Premium subtle background */}
           <div className="pointer-events-none fixed inset-0">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(199,200,90,0.20),transparent_42%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
           </div>
 
           <div className="relative flex min-h-screen">
-            {/* Desktop sidebar */}
             <div className="hidden md:block">{SidebarContent}</div>
 
-            {/* Mobile top bar */}
             <div className="md:hidden fixed left-0 right-0 top-0 z-20 border-b border-slate-900/10 bg-white/90 backdrop-blur">
               <div className="flex items-center justify-between px-4 py-3">
                 <button
@@ -429,26 +386,20 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               </div>
             </div>
 
-            {/* Mobile drawer */}
             {mobileMenuOpen ? (
               <div className="md:hidden fixed inset-0 z-30">
                 <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
                 <div className="absolute inset-y-0 left-0">
-                  {/* Force sidebar open on mobile for usability */}
                   <div className="h-full w-80">{SidebarContent}</div>
                 </div>
               </div>
             ) : null}
 
-            {/* Main content */}
             <section className="flex-1 px-5 pb-6 pt-20 md:px-10 md:pt-8">
-              {/* Header (desktop) */}
               <div className="mb-6 hidden md:flex items-start justify-between">
                 <div>
                   <h1 className="text-2xl font-semibold text-slate-900">Workspace</h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Ask the assistant, review context, and keep moving.
-                  </p>
+                  <p className="mt-1 text-sm text-slate-500">Ask the assistant, review context, and keep moving.</p>
                 </div>
 
                 <button
@@ -462,37 +413,25 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                 </button>
               </div>
 
-              {/* Chat container */}
               <div className="mx-auto w-full max-w-4xl">
                 <div className="rounded-3xl border border-slate-900/10 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-                  {/* Chat header strip */}
                   <div className="flex items-center justify-between gap-3 border-b border-slate-900/10 px-6 py-4">
                     <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        Assistant
-                      </p>
-                      <h2 className="mt-1 truncate text-base font-semibold text-slate-900">
-                        Workspace Assistant
-                      </h2>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Assistant</p>
+                      <h2 className="mt-1 truncate text-base font-semibold text-slate-900">Workspace Assistant</h2>
                     </div>
 
-                    <button
-                      onClick={handleNewChat}
-                      className="rounded-2xl bg-[#2f343a] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900"
-                    >
+                    <button onClick={handleNewChat} className="rounded-2xl bg-[#2f343a] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
                       New chat
                     </button>
                   </div>
 
-                  {/* Messages */}
                   <div className="h-[60vh] overflow-y-auto px-6 py-5 md:h-[62vh]">
                     <div className="space-y-4">
                       {messages.length === 0 ? (
                         <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-5">
                           <p className="text-sm font-semibold text-slate-900">You’re in.</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            Ask anything operational — or open Tasks to complete check-ins.
-                          </p>
+                          <p className="mt-1 text-sm text-slate-600">Ask anything operational — or open Tasks to complete check-ins.</p>
                         </div>
                       ) : null}
 
@@ -516,7 +455,6 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                     </div>
                   </div>
 
-                  {/* Input */}
                   <div className="border-t border-slate-900/10 px-6 py-4">
                     <div className="flex items-center gap-2">
                       <input
