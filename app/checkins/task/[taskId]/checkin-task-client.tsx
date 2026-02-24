@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 interface Task {
   id: string;
@@ -12,75 +11,204 @@ interface Task {
   status: string;
   scheduled_for: string;
   created_at: string;
+  submitted_at?: string | null;
 }
 
-function cx(...classes: Array<string | false | undefined | null>) {
+function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="block text-sm font-semibold text-slate-900">{children}</label>;
+function formatDateTime(value: string) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toLocaleString();
+  }
 }
 
-function FieldHint({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-xs text-slate-500">{children}</p>;
-}
+type FieldType = "text" | "textarea" | "number" | "slider" | "select";
 
-function InputBase(props: React.InputHTMLAttributes<HTMLInputElement>) {
+type FieldDef = {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  options?: Array<{ label: string; value: string }>;
+  help?: string;
+};
+
+const TEMPLATE_FIELDS: Record<string, { title: string; fields: FieldDef[] }> = {
+  daily_checkin: {
+    title: "Daily Check-In",
+    fields: [
+      {
+        key: "mood",
+        label: "How are you feeling today? (1–10)",
+        type: "slider",
+        required: true,
+        min: 1,
+        max: 10,
+        help: "Be honest. This helps identify patterns early.",
+      },
+      {
+        key: "priorities",
+        label: "What are your top 3 priorities today?",
+        type: "textarea",
+        required: true,
+        placeholder: "1) …\n2) …\n3) …",
+      },
+      {
+        key: "blockers",
+        label: "Any blockers or risks?",
+        type: "textarea",
+        required: true,
+        placeholder: "If none, write “No blockers”.",
+      },
+      {
+        key: "support_needed",
+        label: "Support needed from your manager or team?",
+        type: "textarea",
+        required: true,
+        placeholder: "If none, write “No support needed”.",
+      },
+    ],
+  },
+  daily_checkout: {
+    title: "Daily Check-Out",
+    fields: [
+      {
+        key: "wins",
+        label: "What did you complete today?",
+        type: "textarea",
+        required: true,
+        placeholder: "List completed work clearly.",
+      },
+      {
+        key: "misses",
+        label: "What did you not complete — and why?",
+        type: "textarea",
+        required: true,
+        placeholder: "Be direct. Clarity beats excuses.",
+      },
+      {
+        key: "tomorrow",
+        label: "What will you focus on tomorrow?",
+        type: "textarea",
+        required: true,
+        placeholder: "Top priorities for tomorrow.",
+      },
+      {
+        key: "mood_end",
+        label: "How do you feel at end of day? (1–10)",
+        type: "slider",
+        required: true,
+        min: 1,
+        max: 10,
+      },
+    ],
+  },
+  weekly_checkin: {
+    title: "Weekly Reflection",
+    fields: [
+      {
+        key: "highlights",
+        label: "Highlights of the week",
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "challenges",
+        label: "Challenges / blockers encountered",
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "lessons",
+        label: "Key lessons learned",
+        type: "textarea",
+        required: true,
+      },
+      {
+        key: "next_week",
+        label: "Focus for next week",
+        type: "textarea",
+        required: true,
+      },
+    ],
+  },
+  onboarding_profile: {
+    title: "Onboarding Profile",
+    fields: [
+      { key: "role", label: "Your role", type: "text", required: true, placeholder: "e.g. Broker" },
+      { key: "branch", label: "Branch", type: "text", required: true, placeholder: "e.g. Parktown" },
+      { key: "experience", label: "Experience level", type: "text", required: true, placeholder: "e.g. 2 years" },
+      {
+        key: "goals",
+        label: "What does success look like for you?",
+        type: "textarea",
+        required: true,
+      },
+    ],
+  },
+};
+
+function Toast({
+  open,
+  title,
+  body,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  body?: string;
+  onClose: () => void;
+}) {
+  if (!open) return null;
   return (
-    <input
-      {...props}
-      className={cx(
-        "mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400",
-        "focus:border-[#c7c85a]/50 focus:outline-none focus:ring-2 focus:ring-[#c7c85a]/25",
-        props.className
-      )}
-    />
+    <div className="fixed inset-x-0 top-3 z-50 mx-auto w-full max-w-lg px-3">
+      <div className="rounded-2xl bg-slate-900 text-white shadow-[0_18px_60px_rgba(2,6,23,0.35)] ring-1 ring-white/10">
+        <div className="flex items-start gap-3 p-4">
+          <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#B8BE3B]" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold">{title}</div>
+            {body ? <div className="mt-1 text-sm text-white/75">{body}</div> : null}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl px-2 py-1 text-xs font-semibold text-white/80 hover:bg-white/10 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function TextareaBase(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      className={cx(
-        "mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400",
-        "focus:border-[#c7c85a]/50 focus:outline-none focus:ring-2 focus:ring-[#c7c85a]/25",
-        props.className
-      )}
-    />
-  );
-}
-
-function SelectBase(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      {...props}
-      className={cx(
-        "mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm text-slate-900",
-        "focus:border-[#c7c85a]/50 focus:outline-none focus:ring-2 focus:ring-[#c7c85a]/25",
-        props.className
-      )}
-    />
-  );
-}
-
-export default function CheckinTaskClient({ taskId }: { taskId: string; userId: string }) {
-  const router = useRouter();
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-
+export default function CheckinTaskClient({
+  taskId,
+  userId,
+}: {
+  taskId: string;
+  userId: string;
+}) {
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  const [mounted, setMounted] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
-
-  const [banner, setBanner] = useState<{ type: "info" | "error" | "success"; text: string } | null>(null);
-
-  useEffect(() => setMounted(true), []);
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastTitle, setToastTitle] = useState("");
+  const [toastBody, setToastBody] = useState<string | undefined>(undefined);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -88,42 +216,37 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
         const res = await fetch(`/api/checkins/task?taskId=${taskId}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          setError(err.error || "Failed to load task");
+          setError((err as any).error || "Failed to load task");
           setLoading(false);
           return;
         }
         const data = await res.json();
         setTask(data.task);
-        setError(null);
       } catch {
         setError("Failed to fetch task");
       } finally {
         setLoading(false);
       }
     };
-
     fetchTask();
   }, [taskId]);
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push("/");
+  function showToast(title: string, body?: string) {
+    setToastTitle(title);
+    setToastBody(body);
+    setToastOpen(true);
+    window.setTimeout(() => setToastOpen(false), 2600);
   }
 
-  const handleSubmit = async (answers: Record<string, unknown>, missing: string[]) => {
+  const template = useMemo(() => {
+    const key = task?.template_key ?? "";
+    return TEMPLATE_FIELDS[key] ?? null;
+  }, [task?.template_key]);
+
+  const handleSubmit = async (answers: Record<string, unknown>) => {
     if (!task) return;
 
-    if (missing.length > 0) {
-      setBanner({
-        type: "error",
-        text: `Please complete all required fields: ${missing.join(", ")}.`,
-      });
-      return;
-    }
-
     setSubmitting(true);
-    setBanner(null);
-
     try {
       const res = await fetch("/api/checkins/submit", {
         method: "POST",
@@ -133,373 +256,285 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setBanner({ type: "error", text: err.error || "Failed to submit" });
+        showToast("Submission failed", (err as any).error || "Please try again.");
         setSubmitting(false);
         return;
       }
 
-      setBanner({ type: "success", text: "Saved. Submission recorded." });
+      showToast("Submitted", "Your check-in has been recorded.");
       router.replace("/tasks");
       router.refresh();
     } catch {
-      setBanner({ type: "error", text: "Failed to submit check-in" });
+      showToast("Submission failed", "Please check your connection and try again.");
       setSubmitting(false);
     }
   };
 
-  const Sidebar = (
-    <aside className={cx("flex h-full flex-col border-r border-slate-900/10 bg-white", sidebarOpenDesktop ? "w-80" : "w-20")}>
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-10 w-10 rounded-2xl bg-[#c7c85a]/30" />
-        {sidebarOpenDesktop ? (
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">NetworkSpace</p>
-            <p className="text-xs text-slate-500">AI Check-Ins</p>
-          </div>
-        ) : null}
+  if (loading) {
+    return <div className="text-slate-600">Loading task…</div>;
+  }
 
-        <button
-          onClick={() => setSidebarOpenDesktop((v) => !v)}
-          className={cx(
-            "ml-auto rounded-xl border border-slate-900/10 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50",
-            !sidebarOpenDesktop && "ml-0"
-          )}
-          aria-label="Toggle sidebar"
-        >
-          {sidebarOpenDesktop ? "⟨" : "⟩"}
-        </button>
+  if (error || !task) {
+    return (
+      <div className="rounded-2xl bg-red-50 p-6 text-red-700 ring-1 ring-red-200">
+        {error || "Task not found"}
       </div>
-
-      <nav className="px-3">
-        {sidebarOpenDesktop ? (
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-        ) : null}
-
-        <div className="space-y-1">
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/workspace");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Workspace</span> : null}
-          </button>
-
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/tasks");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Tasks</span> : null}
-          </button>
-
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/inbox");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Inbox</span> : null}
-          </button>
-        </div>
-      </nav>
-
-      <div className="mt-auto border-t border-slate-900/10 px-5 py-4">
-        <button
-          onClick={handleSignOut}
-          className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-        >
-          Sign out
-        </button>
-      </div>
-    </aside>
-  );
-
-  if (loading) return <div className="p-8 text-slate-600">Loading task…</div>;
-  if (error || !task) return <div className="p-8 text-red-700">{error || "Task not found"}</div>;
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900" suppressHydrationWarning>
-      {!mounted ? null : (
-        <>
-          <div className="pointer-events-none fixed inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(199,200,90,0.18),transparent_45%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
-          </div>
+    <div className="mx-auto max-w-3xl">
+      <Toast open={toastOpen} title={toastTitle} body={toastBody} onClose={() => setToastOpen(false)} />
 
-          <div className="relative flex min-h-screen">
-            <div className="hidden md:block">{Sidebar}</div>
+      <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-900/10 pb-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Check-In</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Keep it clear. Answer all questions in full.
+          </p>
+        </div>
+      </div>
 
-            <div className="md:hidden fixed left-0 right-0 top-0 z-20 border-b border-slate-900/10 bg-white/90 backdrop-blur">
-              <div className="flex items-center justify-between px-4 py-3">
-                <button
-                  onClick={() => setMobileMenuOpen(true)}
-                  className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Menu
-                </button>
-                <div className="text-sm font-semibold text-slate-900">Check-in</div>
-                <button
-                  onClick={() => router.push("/tasks")}
-                  className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Tasks
-                </button>
-              </div>
-            </div>
+      {/* Task meta */}
+      <div className="mb-6 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-[#B8BE3B]/15 px-3 py-1 text-xs font-semibold text-slate-900 ring-1 ring-[#B8BE3B]/35">
+            {task.template_title || task.template_key || "No template"}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+            Status: {task.status}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+            Scheduled: {formatDateTime(task.scheduled_for)}
+          </span>
+        </div>
+      </div>
 
-            {mobileMenuOpen ? (
-              <div className="md:hidden fixed inset-0 z-30">
-                <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
-                <div className="absolute inset-y-0 left-0">
-                  <div className="h-full w-80">{Sidebar}</div>
-                </div>
-              </div>
-            ) : null}
-
-            <section className="flex-1 px-5 pb-8 pt-20 md:px-10 md:pt-8">
-              <div className="mx-auto w-full max-w-2xl">
-                <div className="mb-6">
-                  <h1 className="text-2xl font-semibold">{task.template_title || task.template_key || "Check-in"}</h1>
-                  <p className="mt-1 text-sm text-slate-500">Take 3–5 minutes. Answer fully. Submit once.</p>
-                </div>
-
-                {banner ? (
-                  <div
-                    className={cx(
-                      "mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold",
-                      banner.type === "success" && "border-emerald-300 bg-emerald-50 text-emerald-800",
-                      banner.type === "error" && "border-red-300 bg-red-50 text-red-800",
-                      banner.type === "info" && "border-slate-900/10 bg-slate-50 text-slate-800"
-                    )}
-                  >
-                    {banner.text}
-                  </div>
-                ) : null}
-
-                {/* Meta card */}
-                <div className="mb-6 rounded-3xl border border-slate-900/10 bg-white p-5">
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-700">
-                    <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1">
-                      <span className="text-slate-500">Status:</span> <span className="font-semibold">{task.status}</span>
-                    </span>
-                    <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1">
-                      <span className="text-slate-500">Scheduled:</span>{" "}
-                      <span className="font-semibold">{new Date(task.scheduled_for).toLocaleString()}</span>
-                    </span>
-                  </div>
-                </div>
-
-                {task.status === "submitted" ? (
-                  <div className="rounded-3xl border border-emerald-300 bg-emerald-50 p-6 text-emerald-800">
-                    This task has already been submitted.
-                  </div>
-                ) : !task.template_key ? (
-                  <div className="rounded-3xl border border-amber-300 bg-amber-50 p-6 text-amber-800">
-                    Task has no template assigned.
-                  </div>
-                ) : (
-                  <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} />
-                )}
-              </div>
-            </section>
-          </div>
-        </>
+      {task.status === "submitted" ? (
+        <div className="rounded-2xl bg-emerald-50 p-6 text-emerald-800 ring-1 ring-emerald-200">
+          This task has already been submitted.
+        </div>
+      ) : !task.template_key ? (
+        <div className="rounded-2xl bg-[#B8BE3B]/15 p-6 text-slate-900 ring-1 ring-[#B8BE3B]/35">
+          Task has no template assigned.
+        </div>
+      ) : !template ? (
+        <div className="rounded-2xl bg-red-50 p-6 text-red-700 ring-1 ring-red-200">
+          Unknown template: <span className="font-semibold">{task.template_key}</span>
+        </div>
+      ) : (
+        <DynamicForm
+          title={template.title}
+          fields={template.fields}
+          onSubmit={handleSubmit}
+          submitting={submitting}
+        />
       )}
-    </main>
+    </div>
   );
 }
 
-function FormRenderer({
-  templateKey,
+function DynamicForm({
+  title,
+  fields,
   onSubmit,
   submitting,
 }: {
-  templateKey: string;
-  onSubmit: (answers: Record<string, unknown>, missing: string[]) => void;
+  title: string;
+  fields: FieldDef[];
+  onSubmit: (answers: Record<string, unknown>) => void;
   submitting: boolean;
 }) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  const handleChange = (key: string, value: unknown) => setFormData((prev) => ({ ...prev, [key]: value }));
+  const requiredKeys = useMemo(
+    () => fields.filter((f) => f.required).map((f) => f.key),
+    [fields]
+  );
 
-  const requiredKeysByTemplate: Record<string, string[]> = {
-    daily_checkin: ["mood", "priorities"],
-    daily_checkout: ["completed_priorities", "accomplishments", "energy_level"],
-    weekly_checkin: ["wins", "challenges", "next_goals", "satisfaction"],
-    onboarding_profile: ["full_name", "role", "bio", "goals"],
+  const missing = useMemo(() => {
+    const list: FieldDef[] = [];
+    for (const f of fields) {
+      if (!f.required) continue;
+      const v = formData[f.key];
+      const empty =
+        v === undefined ||
+        v === null ||
+        (typeof v === "string" && v.trim().length === 0);
+      if (empty) list.push(f);
+    }
+    return list;
+  }, [fields, formData]);
+
+  const handleChange = (key: string, value: unknown) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
-  const missing = () => {
-    const req = requiredKeysByTemplate[templateKey] ?? [];
-    return req.filter((k) => {
-      const v = formData[k];
-      if (v === undefined || v === null) return true;
-      if (typeof v === "string" && v.trim() === "") return true;
-      return false;
-    });
+  const validate = () => {
+    const next: Record<string, string> = {};
+    for (const f of fields) {
+      if (!f.required) continue;
+      const v = formData[f.key];
+      const empty =
+        v === undefined ||
+        v === null ||
+        (typeof v === "string" && v.trim().length === 0);
+      if (empty) next[f.key] = "Required";
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData, missing());
+    setSubmitAttempted(true);
+    if (!validate()) return;
+    onSubmit(formData);
   };
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="rounded-3xl border border-slate-900/10 bg-white p-6">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <div className="mt-5 space-y-6">{children}</div>
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
-      >
-        {submitting ? "Submitting…" : "Submit"}
-      </button>
-    </div>
-  );
-
-  if (templateKey === "daily_checkin") {
-    return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Daily Check-in">
-          <div>
-            <FieldLabel>How are you feeling today? (1–10)</FieldLabel>
-            <FieldHint>Be honest — this helps calibrate workload and focus.</FieldHint>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("mood", parseInt(e.target.value))}
-            />
-          </div>
-
-          <div>
-            <FieldLabel>What are your top 3 priorities today?</FieldLabel>
-            <FieldHint>Write full sentences. Clarity beats speed.</FieldHint>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("priorities", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Any blockers or concerns?</FieldLabel>
-            <FieldHint>If none, say “None”.</FieldHint>
-            <TextareaBase rows={3} onChange={(e) => handleChange("blockers", e.target.value)} />
-          </div>
-        </Section>
-      </form>
-    );
-  }
-
-  if (templateKey === "daily_checkout") {
-    return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Daily Check-out">
-          <div>
-            <FieldLabel>Did you complete your priorities?</FieldLabel>
-            <FieldHint>Choose the closest option.</FieldHint>
-            <SelectBase required onChange={(e) => handleChange("completed_priorities", e.target.value)}>
-              <option value="">Select…</option>
-              <option value="yes">Yes</option>
-              <option value="partial">Partially</option>
-              <option value="no">No</option>
-            </SelectBase>
-          </div>
-
-          <div>
-            <FieldLabel>What did you accomplish today?</FieldLabel>
-            <FieldHint>List outcomes, not effort.</FieldHint>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("accomplishments", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Energy level at end of day (1–10)</FieldLabel>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("energy_level", parseInt(e.target.value))}
-            />
-          </div>
-        </Section>
-      </form>
-    );
-  }
-
-  if (templateKey === "weekly_checkin") {
-    return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Weekly Check-in">
-          <div>
-            <FieldLabel>What were your key wins this week?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("wins", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>What challenges did you face?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("challenges", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>What are your goals for next week?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("next_goals", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Overall satisfaction (1–10)</FieldLabel>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("satisfaction", parseInt(e.target.value))}
-            />
-          </div>
-        </Section>
-      </form>
-    );
-  }
-
-  if (templateKey === "onboarding_profile") {
-    return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Onboarding Profile">
-          <div>
-            <FieldLabel>Full Name</FieldLabel>
-            <InputBase type="text" required onChange={(e) => handleChange("full_name", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Role / Position</FieldLabel>
-            <InputBase type="text" required onChange={(e) => handleChange("role", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Tell us about yourself</FieldLabel>
-            <TextareaBase required rows={5} onChange={(e) => handleChange("bio", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>What are your primary goals?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("goals", e.target.value)} />
-          </div>
-        </Section>
-      </form>
-    );
-  }
-
   return (
-    <div className="rounded-3xl border border-amber-300 bg-amber-50 p-6 text-amber-900">
-      <p className="font-semibold">Unknown template: {templateKey}</p>
-      <p className="mt-1 text-sm">This template is not currently supported. Please contact support.</p>
-    </div>
+    <form onSubmit={handleFormSubmit} className="pb-24">
+      <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          All questions are required. Take a moment to answer properly.
+        </p>
+
+        {/* Missing summary */}
+        {submitAttempted && missing.length > 0 ? (
+          <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700 ring-1 ring-red-200">
+            <div className="font-semibold">Please complete {missing.length} required item(s):</div>
+            <ul className="mt-2 list-disc pl-5 space-y-1">
+              {missing.map((f) => (
+                <li key={f.key}>{f.label}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="mt-6 space-y-5">
+          {fields.map((f) => {
+            const err = errors[f.key];
+            const value = formData[f.key];
+
+            return (
+              <div key={f.key} className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-900">
+                  {f.label} {f.required ? <span className="text-red-600">*</span> : null}
+                </label>
+                {f.help ? <div className="text-xs text-slate-500">{f.help}</div> : null}
+
+                {f.type === "text" ? (
+                  <input
+                    value={typeof value === "string" ? value : ""}
+                    onChange={(e) => handleChange(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    className={cx(
+                      "w-full rounded-2xl border bg-white px-3 py-3 text-sm outline-none",
+                      err ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-slate-400"
+                    )}
+                  />
+                ) : f.type === "textarea" ? (
+                  <textarea
+                    value={typeof value === "string" ? value : ""}
+                    onChange={(e) => handleChange(f.key, e.target.value)}
+                    placeholder={f.placeholder}
+                    rows={5}
+                    className={cx(
+                      "w-full rounded-2xl border bg-white px-3 py-3 text-sm outline-none",
+                      err ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-slate-400"
+                    )}
+                  />
+                ) : f.type === "number" ? (
+                  <input
+                    type="number"
+                    min={f.min}
+                    max={f.max}
+                    value={typeof value === "number" ? value : ""}
+                    onChange={(e) => handleChange(f.key, Number(e.target.value))}
+                    className={cx(
+                      "w-full rounded-2xl border bg-white px-3 py-3 text-sm outline-none",
+                      err ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-slate-400"
+                    )}
+                  />
+                ) : f.type === "slider" ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">{f.min ?? 1}</span>
+                      <span className="inline-flex items-center rounded-full bg-[#B8BE3B]/15 px-3 py-1 text-xs font-bold text-slate-900 ring-1 ring-[#B8BE3B]/35">
+                        {typeof value === "number" ? value : "—"}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-600">{f.max ?? 10}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={f.min ?? 1}
+                      max={f.max ?? 10}
+                      value={typeof value === "number" ? value : (f.min ?? 1)}
+                      onChange={(e) => handleChange(f.key, Number(e.target.value))}
+                      className="mt-3 w-full accent-slate-900"
+                    />
+                    {err ? <div className="mt-2 text-xs font-semibold text-red-600">{err}</div> : null}
+                  </div>
+                ) : f.type === "select" ? (
+                  <select
+                    value={typeof value === "string" ? value : ""}
+                    onChange={(e) => handleChange(f.key, e.target.value)}
+                    className={cx(
+                      "w-full rounded-2xl border bg-white px-3 py-3 text-sm outline-none",
+                      err ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-slate-400"
+                    )}
+                  >
+                    <option value="">Select…</option>
+                    {(f.options ?? []).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+
+                {err && f.type !== "slider" ? (
+                  <div className="text-xs font-semibold text-red-600">{err}</div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sticky submit bar (mobile-first) */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-3 py-3">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-slate-600">Required</div>
+            <div className="text-sm font-semibold text-slate-900">
+              {submitAttempted && missing.length > 0
+                ? `${missing.length} missing`
+                : `${requiredKeys.length} fields`}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className={cx(
+              "rounded-xl px-5 py-3 text-sm font-semibold text-white",
+              submitting ? "bg-slate-400" : "bg-slate-900 hover:bg-slate-800"
+            )}
+          >
+            {submitting ? "Submitting…" : "Submit"}
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }
