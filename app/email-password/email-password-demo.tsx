@@ -2,10 +2,15 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
-type Props = { user: User | null };
+type Props = {
+  user: User | null;
+  defaultMode?: "signin" | "signup";
+  copyVariant?: "signin" | "signup";
+};
 type Mode = "signup" | "signin";
 
 function getAllowlists() {
@@ -54,12 +59,17 @@ const ACCENT = "#d8cd72";
 const NS_LOGO =
   "https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png";
 
-export default function EmailPasswordDemo({ user: initialUser }: Props) {
+export default function EmailPasswordDemo({
+  user: initialUser,
+  defaultMode = "signin",
+  copyVariant = "signin",
+}: Props) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(defaultMode);
+  const isSignupCopy = copyVariant === "signup";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -100,7 +110,7 @@ export default function EmailPasswordDemo({ user: initialUser }: Props) {
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setStatus(error ? `Error: ${error.message}` : "Success: Signed in.");
-    if (!error) router.push("/email-password?fromAuth=1");
+    if (!error) router.replace("/workspace");
   }
 
   async function handleForgotPassword() {
@@ -122,21 +132,19 @@ export default function EmailPasswordDemo({ user: initialUser }: Props) {
       <div className="flex min-h-screen items-start justify-center px-6 pb-24 pt-12">
         <section className="w-full max-w-[420px]">
           <div className="flex flex-col items-center text-center">
-            <div className="relative h-36 w-36">
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{ backgroundColor: ACCENT }}
-              />
-              <div className="absolute inset-[18px] rounded-full bg-white" />
-              <div className="absolute inset-[28px] rounded-full bg-[#1f1f1f]" />
-              <div className="absolute left-1/2 top-[92px] h-12 w-20 -translate-x-1/2 rounded-t-full bg-[#1f1f1f]" />
-            </div>
+            <img
+              src="https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png"
+              alt="NetworkSpace logo"
+              className="h-28 w-28 object-contain"
+            />
 
             <h1 className="mt-8 text-[40px] font-semibold tracking-tight text-black">
-              Welcome
+              {isSignupCopy ? "Create Account" : "Welcome"}
             </h1>
             <p className="mt-2 text-[13px] text-[#111111]/80">
-              Sign in to your account to continue
+              {isSignupCopy
+                ? "Sign up to create your account"
+                : "Sign in to your account to continue"}
             </p>
           </div>
 
@@ -179,13 +187,12 @@ export default function EmailPasswordDemo({ user: initialUser }: Props) {
                 style={{ caretColor: ACCENT }}
               />
 
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className="mt-2 text-left text-[14px] italic text-black/40 hover:text-black/60"
+              <Link
+                href="/coming-soon"
+                className="mt-2 inline-block text-left text-[14px] italic text-black/40 hover:text-black/60"
               >
                 Forgot Password?
-              </button>
+              </Link>
             </div>
 
             <div className="flex items-center gap-3">
@@ -208,19 +215,18 @@ export default function EmailPasswordDemo({ user: initialUser }: Props) {
                 className="rounded-lg px-10 py-4 text-[16px] font-semibold text-white shadow-sm active:translate-y-[1px]"
                 style={{ backgroundColor: ACCENT }}
               >
-                Sign in
+                {isSignupCopy ? "Sign up" : "Sign in"}
               </button>
             </div>
 
             <div className="text-center text-[14px] font-semibold text-black/55">
-              Need an account,{" "}
-              <button
-                type="button"
-                onClick={() => setMode("signup")}
-                className="text-black/70 underline underline-offset-4 hover:text-black"
+              {isSignupCopy ? "Already have an account? " : "Need an account, "}
+              <Link
+                href={isSignupCopy ? "/" : "/register"}
+                className="text-black/70 hover:text-black underline underline-offset-4"
               >
-                register
-              </button>
+                {isSignupCopy ? "Sign in" : "register"}
+              </Link>
             </div>
 
             {status ? (
