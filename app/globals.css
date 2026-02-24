@@ -5,7 +5,14 @@
   --foreground: #171717;
 }
 
-@theme inline {
+@theme :root {
+  /* NetworkSpace brand tokens */
+  --ns-olive: #c7c84d;      /* brand accent */
+  --ns-charcoal: #2b2b2b;   /* primary dark */
+  --ns-bg: #f7f7f5;         /* app background */
+  --ns-text: #111111;
+  --ns-border: rgba(0,0,0,0.10);}
+  inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);

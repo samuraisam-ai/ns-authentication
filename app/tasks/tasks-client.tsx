@@ -1,175 +1,164 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-interface Task {
-  id: string;
-  status: string;
-  scheduled_for: string;
-  sent_at?: string;
-  submitted_at?: string;
-  template_key: string;
-  template_title: string;
+type TaskItem = {
+  id: number;
+  template_key: string | null;
+  template_title: string | null;
+  scheduled_for: string | null;
+  status: string | null;
+  submitted_at?: string | null;
+};
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "short",
+    }).format(d);
+  } catch {
+    return iso;
+  }
 }
 
 export default function TasksClient() {
-  const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"incomplete" | "complete">("incomplete");
+  const [items, setItems] = useState<TaskItem[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending");
-
-  useEffect(() => {
-    fetchTasks();
-  }, []);
 
   async function fetchTasks() {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("/api/tasks");
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to fetch tasks");
-      }
+      const res = await fetch("/tasks/api/list", { cache: "no-store" });
       const data = await res.json();
-      setTasks(data.tasks || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch tasks");
+      if (!res.ok) throw new Error(data?.error ?? "Failed to load tasks");
+      setItems(data?.tasks ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load tasks");
     } finally {
       setLoading(false);
     }
   }
 
-  const pendingTasks = tasks.filter(
-    (task) => task.status === "pending" || task.status === "overdue"
-  );
-  const completedTasks = tasks.filter((task) => task.status === "submitted");
+  useEffect(() => {
+    fetchTasks();
+  }, []);
 
-  const displayTasks = activeTab === "pending" ? pendingTasks : completedTasks;
+  const incomplete = useMemo(
+    () => items.filter((t) => (t.status ?? "").toLowerCase() !== "submitted"),
+    [items]
+  );
+  const complete = useMemo(
+    () => items.filter((t) => (t.status ?? "").toLowerCase() === "submitted"),
+    [items]
+  );
+
+  const list = tab === "incomplete" ? incomplete : complete;
 
   return (
-    <div className="mx-auto max-w-4xl">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between border-b border-slate-900/10 pb-4">
-        <Link href="/workspace" className="text-sm font-medium text-slate-500 hover:text-slate-800">
-          ← Back to Workspace
-        </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">Tasks</h1>
-        <div className="w-32" /> {/* Spacer for alignment */}
-      </div>
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)] p-1">
+          <button
+            className={[
+              "rounded-2xl px-4 py-2 text-sm font-medium",
+              tab === "incomplete"
+                ? "bg-white border border-[var(--ns-border)]"
+                : "text-black/60 hover:text-black",
+            ].join(" ")}
+            onClick={() => setTab("incomplete")}
+          >
+            Incomplete <span className="ml-1 text-xs text-black/50">({incomplete.length})</span>
+          </button>
+          <button
+            className={[
+              "rounded-2xl px-4 py-2 text-sm font-medium",
+              tab === "complete"
+                ? "bg-white border border-[var(--ns-border)]"
+                : "text-black/60 hover:text-black",
+            ].join(" ")}
+            onClick={() => setTab("complete")}
+          >
+            Complete <span className="ml-1 text-xs text-black/50">({complete.length})</span>
+          </button>
+        </div>
 
-      {/* Tabs */}
-      <div className="mb-6 flex gap-2 rounded-xl border border-slate-900/10 bg-slate-50 p-1">
         <button
-          onClick={() => setActiveTab("pending")}
-          className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "pending"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
+          onClick={fetchTasks}
+          className="rounded-2xl border border-[var(--ns-border)] bg-white px-4 py-2 text-sm font-medium hover:bg-black/5"
         >
-          Pending
-          {pendingTasks.length > 0 && (
-            <span className="ml-2 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
-              {pendingTasks.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("completed")}
-          className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            activeTab === "completed"
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          Completed
-          {completedTasks.length > 0 && (
-            <span className="ml-2 text-xs text-slate-500">({completedTasks.length})</span>
-          )}
+          Refresh
         </button>
       </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="rounded-2xl border border-slate-900/10 bg-white p-8 text-center">
-          <p className="text-sm text-slate-600">Loading tasks...</p>
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-red-300 bg-red-50 p-8 text-center">
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      ) : displayTasks.length === 0 ? (
-        <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-8 text-center">
-          <p className="text-sm text-slate-600">
-            {activeTab === "pending" ? "No pending tasks" : "No completed tasks"}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {displayTasks.map((task) => (
+      <div className="mt-4">
+        {loading ? (
+          <div className="space-y-3">
+            <div className="h-16 rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)]" />
+            <div className="h-16 rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)]" />
+            <div className="h-16 rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)]" />
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)] p-4">
+            <div className="text-sm font-semibold">Couldn’t load tasks</div>
+            <div className="mt-1 text-sm text-black/60">{error}</div>
             <button
-              key={task.id}
-              onClick={() => router.push(`/checkins/task/${task.id}`)}
-              className="w-full rounded-xl border border-slate-900/10 bg-white p-5 text-left transition hover:bg-slate-50 hover:shadow-sm"
+              onClick={fetchTasks}
+              className="mt-3 rounded-2xl bg-[var(--ns-charcoal)] px-4 py-2 text-sm font-medium text-white"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-base font-semibold text-slate-900">
-                    {task.template_title || task.template_key}
-                  </h3>
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
-                    <span className="flex items-center gap-1">
-                      <span className="text-slate-500">Status:</span>
-                      <span
-                        className={`font-medium ${
-                          task.status === "overdue"
-                            ? "text-red-600"
-                            : task.status === "pending"
-                            ? "text-yellow-600"
-                            : "text-emerald-600"
-                        }`}
-                      >
-                        {task.status}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-slate-500">Scheduled:</span>
-                      <span className="font-medium">
-                        {new Date(task.scheduled_for).toLocaleDateString()}
-                      </span>
-                    </span>
-                    {task.submitted_at && (
-                      <span className="flex items-center gap-1">
-                        <span className="text-slate-500">Submitted:</span>
-                        <span className="font-medium">
-                          {new Date(task.submitted_at).toLocaleDateString()}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="ml-4 flex items-center text-slate-400">
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </div>
-              </div>
+              Try again
             </button>
-          ))}
-        </div>
-      )}
+          </div>
+        ) : list.length === 0 ? (
+          <div className="rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)] p-6 text-center">
+            <div className="text-sm font-semibold">
+              {tab === "incomplete" ? "You’re all caught up." : "No completed tasks yet."}
+            </div>
+            <div className="mt-1 text-sm text-black/60">
+              Keep it consistent. Small wins stack.
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {list.map((t) => {
+              const title = t.template_title ?? t.template_key ?? "Check-in";
+              const when = formatDateTime(t.scheduled_for);
+              const submitted = t.submitted_at ? formatDateTime(t.submitted_at) : null;
+
+              return (
+                <Link
+                  key={t.id}
+                  href={`/checkins/task/${t.id}`}
+                  className="block rounded-2xl border border-[var(--ns-border)] bg-white p-4 hover:bg-black/5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold">{title}</div>
+                      <div className="mt-1 text-xs text-black/55">
+                        Scheduled: {when}
+                        {submitted ? <> • Submitted: {submitted}</> : null}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 rounded-full bg-[var(--ns-olive)]/20 px-3 py-1 text-xs font-medium">
+                      {tab === "complete" ? "Submitted" : "Pending"}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

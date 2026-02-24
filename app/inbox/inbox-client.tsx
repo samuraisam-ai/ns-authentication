@@ -1,182 +1,127 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import Link from "next/link";
 
-interface Notification {
-  id: string;
-  user_id: string;
+type InboxItem = {
+  id: number;
   title: string;
   message: string;
-  link?: string;
-  read_at?: string;
-  created_at: string;
+  task_id?: number | null;
+  created_at?: string | null;
+  is_read?: boolean | null;
+};
+
+function formatTime(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "short",
+    }).format(d);
+  } catch {
+    return iso;
+  }
 }
 
-export default function InboxClient({ userId }: { userId: string }) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+export default function InboxClient() {
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
+  const [items, setItems] = useState<InboxItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchNotifications = async () => {
+  async function load() {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("/api/notifications");
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications(data.notifications || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch notifications:", err);
+      // If you already have an inbox API route, keep it.
+      // If not, this will show the error state until you wire it.
+      const res = await fetch("/inbox/api/list", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Failed to load inbox");
+      setItems(data?.items ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load inbox");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchNotifications();
-
-    // Setup Supabase Realtime
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
-    const channel = supabase
-      .channel("notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          setToast("New notification received!");
-          setTimeout(() => setToast(null), 3000);
-          fetchNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId]);
-
-  const markAsRead = async (notificationId: string) => {
-    try {
-      const res = await fetch("/api/notifications/read", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationId }),
-      });
-
-      if (res.ok) {
-        fetchNotifications();
-      }
-    } catch (err) {
-      console.error("Failed to mark as read:", err);
-    }
-  };
-
-  const unreadNotifications = notifications.filter((n) => !n.read_at);
-  const readNotifications = notifications.filter((n) => n.read_at);
-
-  if (loading) {
-    return <div className="text-gray-600">Loading notifications...</div>;
   }
 
+  useEffect(() => {
+    load();
+  }, []);
+
   return (
-    <div className="max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Inbox</h1>
-
-      {toast && (
-        <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded text-blue-800">
-          {toast}
-        </div>
-      )}
-
-      {/* Badge Count */}
-      {unreadNotifications.length > 0 && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          <span className="font-semibold">
-            {unreadNotifications.length} unread notification
-            {unreadNotifications.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-      )}
-
-      {/* Unread Section */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Unread</h2>
-        {unreadNotifications.length === 0 ? (
-          <p className="text-gray-500">No unread notifications</p>
-        ) : (
-          <div className="space-y-3">
-            {unreadNotifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="p-4 bg-white border border-gray-300 rounded shadow-sm"
-              >
-                <h3 className="font-semibold text-lg">{notification.title}</h3>
-                <p className="text-gray-700 mt-1">{notification.message}</p>
-                {notification.link && (
-                  <a
-                    href={notification.link}
-                    className="text-blue-600 hover:underline text-sm mt-2 inline-block"
-                  >
-                    View Details →
-                  </a>
-                )}
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">
-                    {new Date(notification.created_at).toLocaleString()}
-                  </span>
-                  <button
-                    onClick={() => markAsRead(notification.id)}
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    Mark as read
-                  </button>
-                </div>
-              </div>
-            ))}
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">Inbox</div>
+          <div className="mt-1 text-xs text-black/55">
+            Only items that require attention. Tap to open the relevant task.
           </div>
-        )}
+        </div>
+        <button
+          onClick={load}
+          className="rounded-2xl border border-[var(--ns-border)] bg-white px-4 py-2 text-sm font-medium hover:bg-black/5"
+        >
+          Refresh
+        </button>
       </div>
 
-      {/* Read Section */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Read</h2>
-        {readNotifications.length === 0 ? (
-          <p className="text-gray-500">No read notifications</p>
+      <div className="mt-4">
+        {loading ? (
+          <div className="space-y-3">
+            <div className="h-20 rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)]" />
+            <div className="h-20 rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)]" />
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)] p-4">
+            <div className="text-sm font-semibold">Couldn’t load inbox</div>
+            <div className="mt-1 text-sm text-black/60">{error}</div>
+            <div className="mt-3 text-xs text-black/50">
+              If you don’t have an inbox API yet, that’s fine — we can wire it later.
+            </div>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-2xl border border-[var(--ns-border)] bg-[var(--ns-bg)] p-6 text-center">
+            <div className="text-sm font-semibold">You’re all caught up.</div>
+            <div className="mt-1 text-sm text-black/60">
+              No attention items right now.
+            </div>
+            <Link
+              href="/tasks"
+              className="mt-4 inline-flex rounded-2xl bg-[var(--ns-charcoal)] px-4 py-2 text-sm font-medium text-white"
+            >
+              Go to Tasks
+            </Link>
+          </div>
         ) : (
           <div className="space-y-3">
-            {readNotifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="p-4 bg-gray-50 border border-gray-200 rounded"
-              >
-                <h3 className="font-semibold text-gray-700">
-                  {notification.title}
-                </h3>
-                <p className="text-gray-600 mt-1">{notification.message}</p>
-                {notification.link && (
-                  <a
-                    href={notification.link}
-                    className="text-blue-600 hover:underline text-sm mt-2 inline-block"
-                  >
-                    View Details →
-                  </a>
-                )}
-                <div className="mt-3">
-                  <span className="text-xs text-gray-400">
-                    {new Date(notification.created_at).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            ))}
+            {items.map((n) => {
+              const href = n.task_id ? `/checkins/task/${n.task_id}` : "/tasks";
+              return (
+                <Link
+                  key={n.id}
+                  href={href}
+                  className="block rounded-2xl border border-[var(--ns-border)] bg-white p-4 hover:bg-black/5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold">{n.title}</div>
+                      <div className="mt-1 text-sm text-black/70">{n.message}</div>
+                      <div className="mt-2 text-xs text-black/50">
+                        {formatTime(n.created_at)}
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-full bg-[var(--ns-olive)]/20 px-3 py-1 text-xs font-medium">
+                      View
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
