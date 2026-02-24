@@ -1,68 +1,88 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server-client";
-
-function getString(value: unknown, fallback = ""): string {
-  return typeof value === "string" ? value : fallback;
-}
 
 export async function POST(req: Request) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const webhookUrl = process.env.N8N_WEBHOOK_URL;
 
-  if (userErr || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!webhookUrl) {
+    console.error("[chat-log] Missing N8N_WEBHOOK_URL");
+    return NextResponse.json(
+      { error: "Missing N8N_WEBHOOK_URL" },
+      { status: 500 }
+    );
   }
 
-  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const message = getString(body?.message);
-  const direction = "inbound";
-  const route = "/workspace";
-  const sessionId = getString(body?.sessionId, "");
-
-  if (!user.id || !direction || !message) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    console.error("[chat-log] Invalid JSON body received");
     return NextResponse.json(
-      { error: "Missing required fields: user_id, direction, message" },
+      { error: "Invalid JSON body sent to /api/chat-log" },
       { status: 400 }
     );
   }
 
-  const request_id = crypto.randomUUID();
-  const created_at = new Date().toISOString();
+  console.log("[chat-log] Forwarding to n8n:", webhookUrl);
+  console.log("[chat-log] Payload:", JSON.stringify(body).slice(0, 200));
 
-  const payload = {
-    id: crypto.randomUUID(),
-    user_id: user.id,
-    direction,
-    message,
-    request_id,
-    route,
-    created_at,
-    chat_events: { body: body ?? null },
-    identity: {
-      id: user.id,
-      email: getString(user.email),
-    },
-    ...(sessionId ? { sessionId } : {}),
-  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
 
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
-  if (!webhookUrl) {
-    return NextResponse.json({ error: "Missing N8N_WEBHOOK_URL" }, { status: 500 });
+  try {
+    const n8nRes = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const rawText = await n8nRes.text();
+
+    if (!n8nRes.ok) {
+      console.error(
+        `[chat-log] n8n failed with status ${n8nRes.status}:`,
+        rawText.slice(0, 300)
+      );
+      return NextResponse.json(
+        {
+          error: "n8n failed",
+          status: n8nRes.status,
+          raw: rawText?.slice(0, 500) ?? "",
+        },
+        { status: 502 }
+      );
+    }
+
+    let parsed: unknown = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch (parseErr) {
+      console.error("[chat-log] n8n returned non-JSON:", rawText.slice(0, 300));
+      return NextResponse.json(
+        {
+          error: "n8n returned invalid JSON",
+          raw: rawText.slice(0, 500),
+        },
+        { status: 502 }
+      );
+    }
+
+    console.log("[chat-log] n8n response:", JSON.stringify(parsed).slice(0, 200));
+
+    // Return the n8n response exactly as-is
+    return NextResponse.json(parsed);
+  } catch (err: unknown) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    const details = err instanceof Error ? err.message : String(err);
+    console.error(`[chat-log] Error calling n8n:`, details);
+    return NextResponse.json(
+      {
+        error: isAbort ? "n8n timeout" : "Error calling n8n",
+        details,
+      },
+      { status: 504 }
+    );
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const n8nRes = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!n8nRes.ok) {
-    const text = await n8nRes.text().catch(() => "");
-    return NextResponse.json({ error: "n8n failed", detail: text }, { status: 502 });
-  }
-
-  return NextResponse.json({ ok: true, request_id });
 }
