@@ -278,7 +278,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   );
 
   return (
-    <main className="min-h-screen bg-white text-slate-900" suppressHydrationWarning>
+    <main className="min-h-screen bg-slate-50 text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
           <div className="pointer-events-none fixed inset-0">
@@ -301,46 +301,51 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             </div>
           ) : null}
 
-          <section className="relative mx-auto w-full max-w-5xl px-6 pb-10 pt-24 md:pt-20">
-            <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:p-8">
-              <div className="grid items-center gap-6 md:grid-cols-[1.2fr_0.8fr]">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard</p>
-                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
-                    Welcome Back, {currentUser?.user_metadata?.first_name ?? currentUser?.email?.split("@")[0] ?? "there"}
-                  </h1>
-                  <p className="mt-2 text-sm text-[#d8cd72]">Your day at a glance, with the most important actions first.</p>
+          <section className="relative mx-auto w-full max-w-[420px] px-6 pb-10 pt-6">
+            <div className="space-y-8">
+              <section>
+                <div className="rounded-[28px] bg-[#545454] px-6 py-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <h1 className="text-3xl font-bold tracking-tight text-[#cccd56]">
+                        Welcome Back, {currentUser?.user_metadata?.first_name ?? currentUser?.email?.split("@")[0] ?? "there"}
+                      </h1>
+                      <p className="mt-2 text-sm font-semibold text-[#cccd56]">Dashboard</p>
+                    </div>
+
+                    <img
+                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772013513/ChatGPT_Image_Feb_25_2026_11_57_51_AM_pgvrqc.png"
+                      alt="Dashboard illustration"
+                      className="h-28 w-28 shrink-0 object-contain"
+                    />
+                  </div>
                 </div>
+              </section>
 
-                <div className="h-36 rounded-3xl border border-slate-900/10 bg-slate-200/70 md:h-44" />
-              </div>
-            </div>
-
-            <div className="mt-8 grid gap-6 md:grid-cols-2">
-              <section className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+              <section>
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-slate-900">Up Next</h2>
                   <span className="rounded-full bg-[#d8cd72]/25 px-2.5 py-1 text-xs font-semibold text-slate-900">{pendingTaskCount}</span>
                 </div>
                 <button
                   onClick={() => router.push("/checkins/task/[taskId]")}
-                  className="mt-4 w-full rounded-2xl border border-slate-900/10 bg-slate-50 p-4 text-left hover:bg-slate-100"
+                  className="mt-4 w-full rounded-2xl border border-slate-900/10 bg-white p-4 text-left hover:bg-slate-100"
                 >
                   <p className="text-sm font-semibold text-slate-900">Complete your next check-in</p>
                   <p className="mt-1 text-sm text-slate-600">Stay aligned with priorities and keep your progress current.</p>
                 </button>
               </section>
 
-              <section className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+              <section>
                 <h2 className="text-xl font-semibold text-slate-900">Role Advice</h2>
-                <div className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-6 text-center">
+                <div className="mt-4 rounded-2xl border border-slate-900/10 bg-white p-6 text-center">
                   <p className="text-sm font-semibold text-slate-900">No new updates</p>
                   <p className="mt-1 text-sm text-slate-600">You have no ai insights</p>
                 </div>
               </section>
-            </div>
 
-            {status ? <p className="mt-6 text-sm text-slate-600">{status}</p> : null}
+              {status ? <p className="text-sm text-slate-600">{status}</p> : null}
+            </div>
           </section>
         </>
       )}
