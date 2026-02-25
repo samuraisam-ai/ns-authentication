@@ -135,9 +135,8 @@ export default function TasksClient() {
           <button
             type="button"
             onClick={() => {
-              setMessages([]);
-              setActiveSessionId(null);
               setMenuOpen(false);
+              router.push("/workspace?newChat=1");
             }}
             className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >

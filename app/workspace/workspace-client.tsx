@@ -101,6 +101,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   }, [supabase]);
 
   useEffect(() => {
+    if (forceNewChatRef.current) return;
+
     if (!currentUser) {
       setSessions([]);
       setActiveSessionId(null);
@@ -385,7 +387,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     }
   }
 
-  async function handleNewChat() {
+  async function handleNewChat(): Promise<string | null> {
     setStatus("");
     try {
       const res = await fetch("/api/chat/session", { method: "POST" });
@@ -394,14 +396,17 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         throw new Error(`Failed to create session (${res.status}): ${errText}`);
       }
       const data = (await res.json()) as { sessionId: string };
-      setActiveSessionId(data.sessionId);
+      const newId = data.sessionId;
+      setActiveSessionId(newId);
       setSessions((prev) => [
-        { id: data.sessionId, title: "New chat", updated_at: new Date().toISOString() },
+        { id: newId, title: "New chat", updated_at: new Date().toISOString() },
         ...prev,
       ]);
       setMessages([]);
+      return newId;
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
     }
   }
 
@@ -441,15 +446,20 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         <div className="flex h-full flex-col gap-2">
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               forceNewChatRef.current = true;
               setActiveSessionId(null);
               setMessages([]);
               try {
                 localStorage.removeItem("activeSessionId");
               } catch {}
-              setMobileMenuOpen(false);
-              router.replace("/workspace?newChat=1");
+              try {
+                await handleNewChat();
+                setMobileMenuOpen(false);
+                router.replace("/workspace");
+              } finally {
+                forceNewChatRef.current = false;
+              }
             }}
             className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >
