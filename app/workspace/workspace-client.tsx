@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Props = { user: User | null };
 
@@ -44,6 +44,9 @@ function Badge({ value }: { value: number }) {
 
 export default function WorkspaceClient({ user: initialUser }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const newChatParam = searchParams.get("newChat") === "1";
+  const sessionIdParam = searchParams.get("sessionId");
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
 
@@ -65,10 +68,30 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const forceNewChatRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!newChatParam && !forceNewChatRef.current) return;
+    setActiveSessionId(null);
+    setMessages([]);
+    try {
+      localStorage.removeItem("activeSessionId");
+    } catch {}
+    forceNewChatRef.current = false;
+  }, [newChatParam]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (newChatParam || forceNewChatRef.current) return;
+    if (!sessionIdParam) return;
+
+    setActiveSessionId(sessionIdParam);
+    void loadHistory(sessionIdParam);
+  }, [currentUser?.id, newChatParam, sessionIdParam]);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -86,10 +109,12 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       return;
     }
 
-    void loadSessions({ selectFirstIfEmpty: true });
+    if (!newChatParam && !forceNewChatRef.current) {
+      void loadSessions({ selectFirstIfEmpty: true, preferredSessionId: sessionIdParam ?? undefined });
+    }
     void fetchPendingTaskCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+  }, [currentUser, newChatParam, sessionIdParam]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -417,9 +442,14 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
           <button
             type="button"
             onClick={() => {
-              setMessages([]);
+              forceNewChatRef.current = true;
               setActiveSessionId(null);
+              setMessages([]);
+              try {
+                localStorage.removeItem("activeSessionId");
+              } catch {}
               setMobileMenuOpen(false);
+              router.replace("/workspace?newChat=1");
             }}
             className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >
