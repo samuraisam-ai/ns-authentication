@@ -58,6 +58,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [mounted, setMounted] = useState(false);
 
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
@@ -105,6 +106,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
     if (!currentUser) {
       setSessions([]);
+      setSessionsLoading(false);
       setActiveSessionId(null);
       setMessages([]);
       setPendingTaskCount(0);
@@ -150,6 +152,26 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    void fetchSessions();
+
+    const interval = setInterval(() => {
+      void fetchSessions();
+    }, 15000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    if (!currentUser?.id) return;
+    void fetchSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileMenuOpen, currentUser?.id]);
 
   useEffect(() => {
     return () => {
@@ -221,6 +243,31 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     } catch {
       setPendingCount(0);
       setPendingTasks([]);
+    }
+  }
+
+  async function fetchSessions() {
+    if (!currentUser?.id) {
+      setSessions([]);
+      setSessionsLoading(false);
+      return;
+    }
+
+    setSessionsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("chat_sessions")
+        .select("id, title, updated_at, created_at")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setSessions((data ?? []) as Session[]);
+    } catch {
+      setSessions([]);
+    } finally {
+      setSessionsLoading(false);
     }
   }
 
@@ -478,7 +525,9 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             </button>
             {chatsOpen ? (
               <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
-                {sessions.length > 0 ? (
+                {sessionsLoading ? (
+                  <p className="text-sm text-slate-500">Loading chats...</p>
+                ) : sessions.length > 0 ? (
                   <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
                     <div className="space-y-2">
                       {sessions.map((session) => (
