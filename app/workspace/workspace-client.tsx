@@ -216,43 +216,31 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   }
 
   const SidebarContent = (
-    <aside className={cx("flex h-full flex-col border-r border-slate-900/10 bg-white", sidebarOpenDesktop ? "w-80" : "w-20")}>
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-10 w-10 rounded-2xl bg-[#c7c85a]/30" />
-        {sidebarOpenDesktop ? (
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">NetworkSpace</p>
-            <p className="text-xs text-slate-500">Workspace</p>
-          </div>
-        ) : null}
-
+    <aside className="flex h-full w-[80vw] max-w-sm flex-col bg-white shadow-[0_24px_60px_rgba(15,23,42,0.20)]">
+      <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">Dashboard</p>
+        </div>
         <button
-          onClick={() => setSidebarOpenDesktop((v) => !v)}
-          className={cx(
-            "ml-auto rounded-xl border border-slate-900/10 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50",
-            !sidebarOpenDesktop && "ml-0"
-          )}
-          aria-label="Toggle sidebar"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-lg font-semibold text-[#d8cd72] hover:bg-slate-50"
+          aria-label="Close menu"
         >
-          {sidebarOpenDesktop ? "⟨" : "⟩"}
+          ✕
         </button>
       </div>
 
-      <nav className="px-3">
-        {sidebarOpenDesktop ? (
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-        ) : null}
-
-        <div className="space-y-1">
+      <nav className="px-4 py-4">
+        <div className="space-y-2">
           <button
             onClick={() => {
               setMobileMenuOpen(false);
               router.push("/workspace");
             }}
-            className="flex w-full items-center gap-3 rounded-xl bg-[#c7c85a]/20 px-3 py-2.5 text-sm font-medium text-slate-900"
+            className="flex w-full items-center rounded-2xl bg-[#d8cd72]/25 px-4 py-3 text-left text-sm font-semibold text-slate-900"
           >
-            <span className="h-2 w-2 rounded-full bg-[#c7c85a]" />
-            {sidebarOpenDesktop ? <span>Workspace</span> : null}
+            Dashboard
           </button>
 
           <button
@@ -260,11 +248,10 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               setMobileMenuOpen(false);
               router.push("/tasks");
             }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Tasks</span> : null}
-            {sidebarOpenDesktop ? <Badge value={pendingTaskCount} /> : null}
+            <span>Tasks</span>
+            <Badge value={pendingTaskCount} />
           </button>
 
           <button
@@ -272,81 +259,20 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
               setMobileMenuOpen(false);
               router.push("/inbox");
             }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Inbox</span> : null}
+            Chats
           </button>
         </div>
       </nav>
 
-      <div className="mt-5 px-3">
-        {sidebarOpenDesktop ? (
-          <div className="flex items-center justify-between px-3 pb-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Chats</p>
-            <button onClick={handleNewChat} className="rounded-xl bg-[#2f343a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900">
-              New
-            </button>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <button onClick={handleNewChat} className="rounded-xl bg-[#2f343a] px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900" aria-label="New chat">
-              +
-            </button>
-          </div>
-        )}
-
-        {sidebarOpenDesktop ? (
-          <div className="mt-2 max-h-[45vh] space-y-2 overflow-y-auto px-2 pb-2">
-            {sessions.length === 0 ? (
-              <p className="px-2 text-xs text-slate-500">No sessions yet</p>
-            ) : (
-              sessions.map((session) => {
-                const isActive = session.id === activeSessionId;
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => {
-                      setActiveSessionId(session.id);
-                      void loadHistory(session.id);
-                    }}
-                    className={cx(
-                      "w-full rounded-xl border px-3 py-2 text-left text-sm transition",
-                      isActive
-                        ? "border-[#c7c85a]/40 bg-[#c7c85a]/15 text-slate-900"
-                        : "border-slate-900/10 bg-white text-slate-700 hover:bg-slate-50"
-                    )}
-                  >
-                    <p className="truncate font-medium">{session.title || "New chat"}</p>
-                    <p className="mt-1 text-xs text-slate-500">{new Date(session.updated_at).toLocaleDateString()}</p>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-auto border-t border-slate-900/10 px-5 py-4">
-        {sidebarOpenDesktop ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-slate-900">{currentUser?.email ?? "Signed in"}</p>
-              <p className="text-[11px] text-slate-500">Premium • Familiar • Fast</p>
-            </div>
-            <button onClick={handleSignOut} className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              Sign out
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={handleSignOut}
-            className="mx-auto block rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            aria-label="Sign out"
-          >
-            ⎋
-          </button>
-        )}
+      <div className="mt-auto border-t border-slate-900/10 px-4 py-4">
+        <button
+          onClick={handleSignOut}
+          className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
   );
@@ -356,135 +282,63 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       {!mounted ? null : (
         <>
           <div className="pointer-events-none fixed inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(199,200,90,0.20),transparent_42%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(216,205,114,0.22),transparent_42%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
           </div>
 
-          <div className="relative flex min-h-screen">
-            <div className="hidden md:block">{SidebarContent}</div>
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="fixed left-5 top-5 z-30 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xl font-semibold text-[#d8cd72] shadow-sm hover:bg-slate-50"
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
 
-            <div className="md:hidden fixed left-0 right-0 top-0 z-20 border-b border-slate-900/10 bg-white/90 backdrop-blur">
-              <div className="flex items-center justify-between px-4 py-3">
-                <button
-                  onClick={() => setMobileMenuOpen(true)}
-                  className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Menu
-                </button>
-                <div className="text-sm font-semibold text-slate-900">Workspace</div>
-                <button
-                  onClick={() => router.push("/tasks")}
-                  className="relative rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Tasks
-                  {pendingTaskCount > 0 ? (
-                    <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c7c85a] px-1.5 text-[11px] font-semibold text-[#0f172a]">
-                      {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
-                    </span>
-                  ) : null}
-                </button>
+          {mobileMenuOpen ? (
+            <div className="fixed inset-0 z-40">
+              <div className="absolute inset-0 bg-black/35" onClick={() => setMobileMenuOpen(false)} />
+              <div className="absolute inset-y-0 left-0">{SidebarContent}</div>
+            </div>
+          ) : null}
+
+          <section className="relative mx-auto w-full max-w-5xl px-6 pb-10 pt-24 md:pt-20">
+            <div className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] md:p-8">
+              <div className="grid items-center gap-6 md:grid-cols-[1.2fr_0.8fr]">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-slate-500">Dashboard</p>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl">
+                    Welcome Back, {currentUser?.user_metadata?.first_name ?? currentUser?.email?.split("@")[0] ?? "there"}
+                  </h1>
+                  <p className="mt-2 text-sm text-[#d8cd72]">Your day at a glance, with the most important actions first.</p>
+                </div>
+
+                <div className="h-36 rounded-3xl border border-slate-900/10 bg-slate-200/70 md:h-44" />
               </div>
             </div>
 
-            {mobileMenuOpen ? (
-              <div className="md:hidden fixed inset-0 z-30">
-                <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
-                <div className="absolute inset-y-0 left-0">
-                  <div className="h-full w-80">{SidebarContent}</div>
+            <div className="mt-8 grid gap-6 md:grid-cols-2">
+              <section className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-slate-900">Up Next</h2>
+                  <span className="rounded-full bg-[#d8cd72]/25 px-2.5 py-1 text-xs font-semibold text-slate-900">{pendingTaskCount}</span>
                 </div>
-              </div>
-            ) : null}
-
-            <section className="flex-1 px-5 pb-6 pt-20 md:px-10 md:pt-8">
-              <div className="mb-6 hidden md:flex items-start justify-between">
-                <div>
-                  <h1 className="text-2xl font-semibold text-slate-900">Workspace</h1>
-                  <p className="mt-1 text-sm text-slate-500">Ask the assistant, review context, and keep moving.</p>
+                <div className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Complete your next check-in</p>
+                  <p className="mt-1 text-sm text-slate-600">Stay aligned with priorities and keep your progress current.</p>
                 </div>
+              </section>
 
-                <button
-                  onClick={() => router.push("/tasks")}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Open Tasks
-                  <span className="inline-flex items-center justify-center rounded-full bg-[#c7c85a]/30 px-2 py-0.5 text-xs font-semibold text-slate-900">
-                    {pendingTaskCount}
-                  </span>
-                </button>
-              </div>
-
-              <div className="mx-auto w-full max-w-4xl">
-                <div className="rounded-3xl border border-slate-900/10 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-                  <div className="flex items-center justify-between gap-3 border-b border-slate-900/10 px-6 py-4">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Assistant</p>
-                      <h2 className="mt-1 truncate text-base font-semibold text-slate-900">Workspace Assistant</h2>
-                    </div>
-
-                    <button onClick={handleNewChat} className="rounded-2xl bg-[#2f343a] px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
-                      New chat
-                    </button>
-                  </div>
-
-                  <div className="h-[60vh] overflow-y-auto px-6 py-5 md:h-[62vh]">
-                    <div className="space-y-4">
-                      {messages.length === 0 ? (
-                        <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-5">
-                          <p className="text-sm font-semibold text-slate-900">You’re in.</p>
-                          <p className="mt-1 text-sm text-slate-600">Ask anything operational — or open Tasks to complete check-ins.</p>
-                        </div>
-                      ) : null}
-
-                      {messages.map((msg) => {
-                        const isUser = msg.role === "user";
-                        return (
-                          <div key={msg.id} className={cx("flex", isUser ? "justify-end" : "justify-start")}>
-                            <div
-                              className={cx(
-                                "max-w-[85%] rounded-2xl border px-4 py-3 text-sm leading-relaxed",
-                                isUser
-                                  ? "border-[#c7c85a]/40 bg-[#c7c85a]/15 text-slate-900"
-                                  : "border-slate-900/10 bg-white text-slate-900"
-                              )}
-                            >
-                              <p className="whitespace-pre-wrap">{msg.content}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-900/10 px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void handleSendMessage(input);
-                          }
-                        }}
-                        placeholder="Type your message…"
-                        className="flex-1 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-[#c7c85a]/50 focus:outline-none focus:ring-2 focus:ring-[#c7c85a]/25"
-                      />
-                      <button
-                        onClick={() => handleSendMessage(input)}
-                        className="rounded-2xl bg-[#2f343a] px-5 py-3 text-sm font-semibold text-white hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c7c85a]/25 disabled:opacity-60"
-                        disabled={isLoading}
-                      >
-                        {isLoading ? "Sending…" : "Send"}
-                      </button>
-                    </div>
-
-                    {status ? <p className="mt-2 text-sm text-slate-600">{status}</p> : null}
-                  </div>
+              <section className="rounded-3xl border border-slate-900/10 bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <h2 className="text-xl font-semibold text-slate-900">Role Advice</h2>
+                <div className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-6 text-center">
+                  <p className="text-sm font-semibold text-slate-900">No new updates</p>
+                  <p className="mt-1 text-sm text-slate-600">You have no ai insights</p>
                 </div>
-              </div>
-            </section>
-          </div>
+              </section>
+            </div>
+
+            {status ? <p className="mt-6 text-sm text-slate-600">{status}</p> : null}
+          </section>
         </>
       )}
     </main>
