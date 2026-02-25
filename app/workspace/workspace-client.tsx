@@ -23,6 +23,13 @@ type Session = {
   updated_at: string;
 };
 
+type PendingTask = {
+  id: string;
+  scheduled_for: string;
+  template_key: string | null;
+  template_title: string | null;
+};
+
 function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
@@ -52,9 +59,12 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
   const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(true);
+  const [tasksOpen, setTasksOpen] = useState(false);
 
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -143,7 +153,11 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   }
 
   async function fetchPendingCount() {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      setPendingCount(0);
+      setPendingTasks([]);
+      return;
+    }
 
     try {
       const { count } = await supabase
@@ -153,8 +167,33 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         .eq("status", "pending");
 
       setPendingCount(count ?? 0);
+
+      const { data: taskRows } = await supabase
+        .from("checkin_tasks")
+        .select(
+          `
+          id,
+          scheduled_for,
+          period_key,
+          template:checkin_templates(template_key, title)
+        `
+        )
+        .eq("user_id", currentUser.id)
+        .eq("status", "pending")
+        .order("scheduled_for", { ascending: true })
+        .limit(20);
+
+      const mappedTasks = (taskRows ?? []).map((row: any) => ({
+        id: row.id,
+        scheduled_for: row.scheduled_for,
+        template_key: row.template?.template_key ?? row.period_key ?? null,
+        template_title: row.template?.title ?? null,
+      }));
+
+      setPendingTasks(mappedTasks);
     } catch {
       setPendingCount(0);
+      setPendingTasks([]);
     }
   }
 
@@ -361,12 +400,9 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   }
 
   const SidebarContent = (
-    <aside className="flex h-full w-[80vw] max-w-sm flex-col bg-white shadow-[0_24px_60px_rgba(15,23,42,0.20)]">
+    <aside className="fixed inset-0 z-50 flex h-full flex-col bg-white">
       <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900">Dashboard</p>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
         <button
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-lg font-semibold text-[#d8cd72] hover:bg-slate-50"
@@ -376,46 +412,109 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         </button>
       </div>
 
-      <nav className="px-4 py-4">
-        <div className="space-y-2">
+      <nav className="flex-1 overflow-hidden px-6 py-4">
+        <div className="flex h-full flex-col gap-2">
           <button
+            type="button"
             onClick={() => {
+              setMessages([]);
+              setActiveSessionId(null);
               setMobileMenuOpen(false);
-              router.push("/workspace");
             }}
-            className="flex w-full items-center rounded-2xl bg-[#d8cd72]/25 px-4 py-3 text-left text-sm font-semibold text-slate-900"
+            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >
-            Dashboard
+            New chat
           </button>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/tasks");
-            }}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
-          >
-            <span>Tasks</span>
-            <Badge value={pendingTaskCount} />
-          </button>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setChatsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={chatsOpen}
+            >
+              <span>Your chats</span>
+              <span className="text-base leading-none text-slate-500">{chatsOpen ? "▾" : "▸"}</span>
+            </button>
+            {chatsOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {sessions.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {sessions.map((session) => (
+                        <button
+                          key={session.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveSessionId(session.id);
+                            void loadHistory(session.id);
+                            setMobileMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          {session.title || "Untitled chat"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No chats yet</p>
+                )}
+              </div>
+            ) : null}
+          </div>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/inbox");
-            }}
-            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
-          >
-            Chats
-          </button>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setTasksOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={tasksOpen}
+            >
+              <span>Your tasks</span>
+              <span className="text-base leading-none text-slate-500">{tasksOpen ? "▾" : "▸"}</span>
+            </button>
+            {tasksOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {pendingTasks.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {pendingTasks.map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => {
+                            router.push(`/checkins/task/${task.id}`);
+                            setMobileMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          <p className="truncate font-semibold text-slate-900">{task.template_title || task.template_key || "Check-in"}</p>
+                          <p className="mt-1 text-xs text-slate-500">Due {new Date(task.scheduled_for).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No pending tasks</p>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </nav>
 
-      <div className="mt-auto border-t border-slate-900/10 px-4 py-4">
+      <div className="sticky bottom-0 mt-auto border-t border-slate-900/10 bg-white px-4 py-4">
         <button
           onClick={handleSignOut}
-          className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
         >
+          <img
+            src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772030126/logout_icon_transparent_leznaq.png"
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-7 object-contain"
+          />
           Sign out
         </button>
       </div>
@@ -466,12 +565,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             </button>
           </header>
 
-          {mobileMenuOpen ? (
-            <div className="fixed inset-0 z-40">
-              <div className="absolute inset-0 bg-black/35" onClick={() => setMobileMenuOpen(false)} />
-              <div className="absolute inset-y-0 left-0">{SidebarContent}</div>
-            </div>
-          ) : null}
+          {mobileMenuOpen ? SidebarContent : null}
 
           <section className="mx-auto h-[calc(100vh-220px)] w-full max-w-[420px] overflow-y-auto px-6 pb-40 pt-6">
             {messages.length === 0 ? (
