@@ -14,16 +14,20 @@ interface Task {
   template_title: string;
 }
 
+type Session = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
 function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-      {children}
-    </span>
-  );
 }
 
 export default function TasksClient() {
@@ -36,13 +40,21 @@ export default function TasksClient() {
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending");
 
   const [mounted, setMounted] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(true);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    void loadSessions();
   }, []);
 
   async function fetchTasks() {
@@ -67,85 +79,160 @@ export default function TasksClient() {
   const completedTasks = tasks.filter((t) => t.status === "submitted");
   const displayTasks = activeTab === "pending" ? pendingTasks : completedTasks;
 
+  async function loadSessions() {
+    try {
+      const res = await fetch("/api/chat/sessions");
+      if (!res.ok) return;
+      const data = (await res.json()) as { sessions?: Session[] };
+      setSessions(data.sessions ?? []);
+    } catch {
+      setSessions([]);
+    }
+  }
+
+  async function loadHistory(sessionId: string) {
+    try {
+      const res = await fetch(`/api/chat/history?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { messages?: Message[] };
+      setMessages(data.messages ?? []);
+    } catch {
+      setMessages([]);
+    }
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/");
   }
 
-  const Sidebar = (
-    <aside className={cx("flex h-full flex-col border-r border-slate-900/10 bg-white", sidebarOpenDesktop ? "w-80" : "w-20")}>
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-10 w-10 rounded-2xl bg-[#c7c85a]/30" />
-        {sidebarOpenDesktop ? (
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">NetworkSpace</p>
-            <p className="text-xs text-slate-500">AI Check-Ins</p>
-          </div>
-        ) : null}
+  function formatMockTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "--:--";
 
+    const hours24 = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const meridiem = hours24 >= 12 ? "PM" : "AM";
+
+    return `${hours24}:${minutes} ${meridiem}`;
+  }
+
+  const SidebarContent = (
+    <aside className="fixed inset-0 z-50 flex h-full flex-col bg-white">
+      <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
         <button
-          onClick={() => setSidebarOpenDesktop((v) => !v)}
-          className={cx(
-            "ml-auto rounded-xl border border-slate-900/10 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50",
-            !sidebarOpenDesktop && "ml-0"
-          )}
-          aria-label="Toggle sidebar"
+          onClick={() => setMenuOpen(false)}
+          className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-lg font-semibold text-[#d8cd72] hover:bg-slate-50"
+          aria-label="Close menu"
         >
-          {sidebarOpenDesktop ? "⟨" : "⟩"}
+          ✕
         </button>
       </div>
 
-      <nav className="px-3">
-        {sidebarOpenDesktop ? (
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-        ) : null}
-
-        <div className="space-y-1">
+      <nav className="flex-1 overflow-hidden px-6 py-4">
+        <div className="flex h-full flex-col gap-2">
           <button
+            type="button"
             onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/workspace");
+              setMessages([]);
+              setActiveSessionId(null);
+              setMenuOpen(false);
             }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Workspace</span> : null}
+            New chat
           </button>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/tasks");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl bg-[#c7c85a]/20 px-3 py-2.5 text-sm font-medium text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-[#c7c85a]" />
-            {sidebarOpenDesktop ? <span>Tasks</span> : null}
-            {sidebarOpenDesktop && pendingTasks.length > 0 ? (
-              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c7c85a] px-1.5 text-[11px] font-semibold text-[#0f172a]">
-                {pendingTasks.length > 99 ? "99+" : pendingTasks.length}
-              </span>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setChatsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={chatsOpen}
+            >
+              <span>Your chats</span>
+              <span className="text-base leading-none text-slate-500">{chatsOpen ? "▾" : "▸"}</span>
+            </button>
+            {chatsOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {sessions.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {sessions.map((session) => (
+                        <button
+                          key={session.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveSessionId(session.id);
+                            void loadHistory(session.id);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          {session.title || "Untitled chat"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No chats yet</p>
+                )}
+              </div>
             ) : null}
-          </button>
+          </div>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/inbox");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Inbox</span> : null}
-          </button>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setTasksOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={tasksOpen}
+            >
+              <span>Your tasks</span>
+              <span className="text-base leading-none text-slate-500">{tasksOpen ? "▾" : "▸"}</span>
+            </button>
+            {tasksOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {pendingTasks.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {pendingTasks.map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => {
+                            router.push(`/checkins/task/${task.id}`);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          <p className="truncate font-semibold text-slate-900">{task.template_title || task.template_key || "Check-in"}</p>
+                          <p className="mt-1 text-xs text-slate-500">Due {new Date(task.scheduled_for).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No pending tasks</p>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </nav>
 
-      <div className="mt-auto border-t border-slate-900/10 px-5 py-4">
+      <div className="sticky bottom-0 mt-auto border-t border-slate-900/10 bg-white px-4 py-4">
         <button
           onClick={handleSignOut}
-          className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
         >
+          <img
+            src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772030126/logout_icon_transparent_leznaq.png"
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-7 object-contain"
+          />
           Sign out
         </button>
       </div>
@@ -153,154 +240,146 @@ export default function TasksClient() {
   );
 
   return (
-    <main className="min-h-screen bg-white text-slate-900" suppressHydrationWarning>
+    <main className="min-h-screen bg-[#eaeaea] text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          <div className="pointer-events-none fixed inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(199,200,90,0.18),transparent_45%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
-          </div>
+          <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-[#eaeaea] px-5 py-4 md:px-10">
+            <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button type="button" onClick={() => router.push("/tasks")} aria-label="Go to tasks">
+                    <img
+                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png"
+                      alt="NS logo"
+                      className="h-9 w-9 object-contain"
+                    />
+                  </button>
+                  {pendingTasks.length > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+                      {pendingTasks.length > 99 ? "99+" : pendingTasks.length}
+                    </span>
+                  ) : null}
+                </div>
 
-          <div className="relative flex min-h-screen">
-            <div className="hidden md:block">{Sidebar}</div>
-
-            {/* Mobile top bar */}
-            <div className="md:hidden fixed left-0 right-0 top-0 z-20 border-b border-slate-900/10 bg-white/90 backdrop-blur">
-              <div className="flex items-center justify-between px-4 py-3">
-                <button
-                  onClick={() => setMobileMenuOpen(true)}
-                  className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Menu
-                </button>
-                <div className="text-sm font-semibold text-slate-900">Tasks</div>
-                <button
-                  onClick={() => router.push("/workspace")}
-                  className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                >
-                  Workspace
-                </button>
+                <p className="text-lg text-slate-900">
+                  <span className="font-semibold">NS</span>{" "}
+                  <span className="font-medium">Coach</span>
+                </p>
               </div>
+
+              <button type="button" onClick={() => setMenuOpen(true)} className="inline-flex items-center justify-center" aria-label="Open menu">
+                <span className="flex flex-col gap-1">
+                  <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                  <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                  <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                </span>
+              </button>
+            </div>
+          </header>
+
+          {menuOpen ? SidebarContent : null}
+
+          <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-5 pb-8 pt-4 md:px-10 md:pt-6">
+            <section className="flex-1">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold">My Tasks</h1>
+              </div>
+
+              <button
+                onClick={fetchTasks}
+                className="rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Refresh
+              </button>
             </div>
 
-            {/* Mobile drawer */}
-            {mobileMenuOpen ? (
-              <div className="md:hidden fixed inset-0 z-30">
-                <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
-                <div className="absolute inset-y-0 left-0">
-                  <div className="h-full w-80">{Sidebar}</div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Content */}
-            <section className="flex-1 px-5 pb-8 pt-20 md:px-10 md:pt-8">
-              <div className="mx-auto w-full max-w-4xl">
-                <div className="mb-6 hidden md:flex items-start justify-between">
-                  <div>
-                    <h1 className="text-2xl font-semibold">Tasks</h1>
-                    <p className="mt-1 text-sm text-slate-500">Only what you need to do. Clean. Fast.</p>
-                  </div>
-
-                  <button
-                    onClick={fetchTasks}
-                    className="rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                {/* Tabs */}
-                <div className="mb-5 flex gap-2 rounded-2xl border border-slate-900/10 bg-slate-50 p-1">
+            <div className="mb-5">
+              <div className="relative">
+                <div className="grid grid-cols-2">
                   <button
                     onClick={() => setActiveTab("pending")}
                     className={cx(
-                      "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition",
-                      activeTab === "pending" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                      "flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+                      activeTab === "pending" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
                     )}
                   >
-                    Pending
-                    {pendingTasks.length > 0 ? (
-                      <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c7c85a] px-1.5 text-[11px] font-semibold text-[#0f172a]">
-                        {pendingTasks.length > 99 ? "99+" : pendingTasks.length}
-                      </span>
-                    ) : null}
+                    <span>Incomplete</span>
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-slate-200 px-1.5 text-[11px] font-semibold text-slate-700">
+                      {pendingTasks.length > 99 ? "99+" : pendingTasks.length}
+                    </span>
                   </button>
 
                   <button
                     onClick={() => setActiveTab("completed")}
                     className={cx(
-                      "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold transition",
-                      activeTab === "completed" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                      "flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+                      activeTab === "completed" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
                     )}
                   >
-                    Completed
-                    {completedTasks.length > 0 ? <span className="ml-2 text-xs text-slate-500">({completedTasks.length})</span> : null}
+                    <span>Complete</span>
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-slate-200 px-1.5 text-[11px] font-semibold text-slate-700">
+                      {completedTasks.length > 99 ? "99+" : completedTasks.length}
+                    </span>
                   </button>
                 </div>
 
-                {/* Body */}
-                {loading ? (
-                  <div className="rounded-3xl border border-slate-900/10 bg-white p-8 text-center">
-                    <p className="text-sm text-slate-600">Loading tasks…</p>
-                  </div>
-                ) : error ? (
-                  <div className="rounded-3xl border border-red-300 bg-red-50 p-6">
-                    <p className="text-sm font-semibold text-red-800">Could not load tasks</p>
-                    <p className="mt-1 text-sm text-red-700">{error}</p>
-                  </div>
-                ) : displayTasks.length === 0 ? (
-                  <div className="rounded-3xl border border-slate-900/10 bg-slate-50 p-8 text-center">
-                    <p className="text-sm text-slate-600">{activeTab === "pending" ? "No pending tasks." : "No completed tasks yet."}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {displayTasks.map((task) => {
-                      const statusTone =
-                        task.status === "overdue" ? "text-red-700" : task.status === "pending" ? "text-amber-700" : "text-emerald-700";
+                <div className="absolute bottom-0 left-0 h-px w-full bg-slate-300" />
+                <div
+                  className={cx(
+                    "absolute bottom-0 h-0.5 w-1/2 bg-[#d8cd72] transition-all duration-300",
+                    activeTab === "pending" ? "left-0" : "left-1/2"
+                  )}
+                />
+              </div>
+            </div>
 
-                      return (
-                        <button
-                          key={task.id}
-                          onClick={() => router.push(`/checkins/task/${task.id}`)}
-                          className="w-full rounded-3xl border border-slate-900/10 bg-white p-5 text-left transition hover:bg-slate-50 hover:shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <h3 className="truncate text-base font-semibold text-slate-900">{task.template_title || task.template_key}</h3>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <Pill>
-                                  <span className="text-slate-500">Status:</span>&nbsp;
-                                  <span className={cx("font-semibold", statusTone)}>{task.status}</span>
-                                </Pill>
-
-                                <Pill>
-                                  <span className="text-slate-500">Scheduled:</span>&nbsp;
-                                  <span className="font-semibold">{new Date(task.scheduled_for).toLocaleString()}</span>
-                                </Pill>
-
-                                {task.submitted_at ? (
-                                  <Pill>
-                                    <span className="text-slate-500">Submitted:</span>&nbsp;
-                                    <span className="font-semibold">{new Date(task.submitted_at).toLocaleString()}</span>
-                                  </Pill>
-                                ) : null}
-                              </div>
+            {loading ? (
+              <div className="rounded-3xl border border-slate-900/10 bg-white p-8 text-center">
+                <p className="text-sm text-slate-600">Loading tasks…</p>
+              </div>
+            ) : error ? (
+              <div className="rounded-3xl border border-red-300 bg-red-50 p-6">
+                <p className="text-sm font-semibold text-red-800">Could not load tasks</p>
+                <p className="mt-1 text-sm text-red-700">{error}</p>
+              </div>
+            ) : displayTasks.length === 0 ? (
+              <div className="rounded-3xl border border-slate-900/10 bg-slate-50 p-8 text-center">
+                <p className="text-sm text-slate-600">{activeTab === "pending" ? "No pending tasks." : "No completed tasks yet."}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayTasks.map((task) => {
+                  return (
+                    <button
+                      key={task.id}
+                      onClick={() => router.push(`/checkins/task/${task.id}`)}
+                      className="relative w-full rounded-2xl bg-white text-left shadow-sm transition hover:shadow"
+                    >
+                      <div className="min-w-0 flex-1">
+                          <div className="absolute left-[-6px] top-4 h-12 w-3 rounded-full bg-[#d8cd72]" />
+                          <div className="flex items-stretch">
+                            <div className="min-w-0 flex-1 bg-[#d8cd72]/25 px-4 py-3 pl-7">
+                              <h3 className="truncate text-base font-bold text-black">{task.template_title || task.template_key}</h3>
                             </div>
-
-                            <div className="mt-1 text-slate-400">
-                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            <div className="flex items-center gap-2 bg-[#545454] px-4 py-3 text-white">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="9" strokeWidth="2" />
+                                <path d="M12 7v5l3 2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
+                              <span className="text-sm font-semibold">{formatMockTime(task.scheduled_for)}</span>
                             </div>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+
+                          <div className="bg-white px-4 py-3">
+                            <p className="text-sm text-slate-500">Update the team on your progress and blockers</p>
+                          </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            )}
             </section>
           </div>
         </>
