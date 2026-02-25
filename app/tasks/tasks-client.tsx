@@ -164,8 +164,7 @@ export default function TasksClient() {
                           key={session.id}
                           type="button"
                           onClick={() => {
-                            setActiveSessionId(session.id);
-                            void loadHistory(session.id);
+                            router.push(`/workspace?sessionId=${session.id}`);
                             setMenuOpen(false);
                           }}
                           className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
@@ -243,7 +242,7 @@ export default function TasksClient() {
     <main className="min-h-screen bg-[#eaeaea] text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-[#eaeaea] px-5 py-4 md:px-10">
+          <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white px-5 py-4 md:px-10">
             <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -279,19 +278,12 @@ export default function TasksClient() {
 
           {menuOpen ? SidebarContent : null}
 
-          <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-5 pb-8 pt-4 md:px-10 md:pt-6">
+          <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-7 pb-8 pt-4 md:px-10 md:pt-6">
             <section className="flex-1">
-            <div className="mb-6 flex items-start justify-between">
+            <div className="mb-3">
               <div>
-                <h1 className="text-2xl font-semibold">My Tasks</h1>
+                <h1 className="text-left text-2xl font-semibold">My Tasks</h1>
               </div>
-
-              <button
-                onClick={fetchTasks}
-                className="rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Refresh
-              </button>
             </div>
 
             <div className="mb-5">
@@ -354,15 +346,15 @@ export default function TasksClient() {
                     <button
                       key={task.id}
                       onClick={() => router.push(`/checkins/task/${task.id}`)}
-                      className="relative w-full rounded-2xl bg-white text-left shadow-sm transition hover:shadow"
+                      className="relative w-full rounded-xl bg-white text-left shadow-sm transition hover:shadow"
                     >
                       <div className="min-w-0 flex-1">
-                          <div className="absolute left-[-6px] top-4 h-12 w-3 rounded-full bg-[#d8cd72]" />
-                          <div className="flex items-stretch">
-                            <div className="min-w-0 flex-1 bg-[#d8cd72]/25 px-4 py-3 pl-7">
+                          <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                          <div className="flex h-10 items-center">
+                            <div className="min-w-0 flex h-full flex-1 items-center rounded-tl-xl bg-[#d8cd72]/25 px-4 pl-7">
                               <h3 className="truncate text-base font-bold text-black">{task.template_title || task.template_key}</h3>
                             </div>
-                            <div className="flex items-center gap-2 bg-[#545454] px-4 py-3 text-white">
+                            <div className="flex h-full items-center gap-2 rounded-tr-xl bg-[#545454] px-4 text-white">
                               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <circle cx="12" cy="12" r="9" strokeWidth="2" />
                                 <path d="M12 7v5l3 2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -371,7 +363,7 @@ export default function TasksClient() {
                             </div>
                           </div>
 
-                          <div className="bg-white px-4 py-3">
+                          <div className="min-h-[64px] rounded-b-xl bg-white px-4 py-4">
                             <p className="text-sm text-slate-500">Update the team on your progress and blockers</p>
                           </div>
                       </div>
