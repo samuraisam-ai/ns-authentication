@@ -12,6 +12,9 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  isTyping?: boolean;
+  fullText?: string;
+  displayText?: string;
 };
 
 type Session = {
@@ -50,9 +53,10 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const hasNotifications = true;
+  const typingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -77,6 +81,48 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    void fetchPendingCount();
+
+    const channel = supabase
+      .channel("pending-tasks-count")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "checkin_tasks",
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        () => {
+          void fetchPendingCount();
+        }
+      )
+      .subscribe();
+
+    const pollingInterval = setInterval(() => {
+      void fetchPendingCount();
+    }, 30000);
+
+    return () => {
+      clearInterval(pollingInterval);
+      void supabase.removeChannel(channel);
+    };
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   async function fetchPendingTaskCount() {
     if (!currentUser?.id) {
       setPendingTaskCount(0);
@@ -93,6 +139,22 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       if (!error && count !== null) setPendingTaskCount(count);
     } catch (err) {
       console.error("Failed to fetch pending task count:", err);
+    }
+  }
+
+  async function fetchPendingCount() {
+    if (!currentUser?.id) return;
+
+    try {
+      const { count } = await supabase
+        .from("checkin_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", currentUser.id)
+        .eq("status", "pending");
+
+      setPendingCount(count ?? 0);
+    } catch {
+      setPendingCount(0);
     }
   }
 
@@ -144,13 +206,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     if (error) setStatus(`Error: ${error.message}`);
   }
 
-  async function handleSendMessage(message: string) {
-    if (!message.trim()) return;
+  async function handleSendMessage(messageText: string) {
+    if (!messageText.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: message,
+      content: messageText,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -161,7 +223,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, sessionId: activeSessionId ?? undefined }),
+        body: JSON.stringify({ message: messageText, sessionId: activeSessionId ?? undefined }),
       });
 
       if (!res.ok) {
@@ -170,18 +232,79 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       }
 
       const data = (await res.json()) as { reply?: string; sessionId?: string };
-      const botReply = String(data.reply ?? "No reply returned");
+      const assistantText = String(data.reply ?? "No reply returned");
       const nextSessionId = data.sessionId ?? activeSessionId;
 
       if (!activeSessionId && nextSessionId) setActiveSessionId(nextSessionId);
 
+      if (typingIntervalRef.current) {
+        clearInterval(typingIntervalRef.current);
+        typingIntervalRef.current = null;
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.role === "assistant" && item.isTyping
+              ? {
+                  ...item,
+                  isTyping: false,
+                  content: item.fullText ?? item.displayText ?? item.content,
+                  displayText: item.fullText ?? item.displayText ?? item.content,
+                }
+              : item
+          )
+        );
+      }
+
+      const botMessageId = (Date.now() + 1).toString();
       const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: botMessageId,
         role: "assistant",
-        content: botReply,
+        content: "",
+        fullText: assistantText,
+        displayText: "",
+        isTyping: true,
       };
 
       setMessages((prev) => [...prev, botMessage]);
+
+      const TYPING_MS_PER_WORD = 110;
+      const words = assistantText.split(" ");
+      let index = 0;
+
+      const getPauseForWord = (word: string) => {
+        if (/[.!?]$/.test(word)) return 220;
+        if (/[,:;]$/.test(word)) return 120;
+        return 0;
+      };
+
+      const typeNextWord = () => {
+        index += 1;
+        const nextDisplayText = words.slice(0, index).join(" ");
+        const done = index >= words.length;
+
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === botMessageId
+              ? {
+                  ...item,
+                  displayText: nextDisplayText,
+                  content: done ? assistantText : item.content,
+                  isTyping: !done,
+                }
+              : item
+          )
+        );
+
+        if (done) {
+          typingIntervalRef.current = null;
+          return;
+        }
+
+        const currentWord = words[index - 1] ?? "";
+        const nextDelay = TYPING_MS_PER_WORD + getPauseForWord(currentWord);
+        typingIntervalRef.current = setTimeout(typeNextWord, nextDelay);
+      };
+
+      typingIntervalRef.current = setTimeout(typeNextWord, TYPING_MS_PER_WORD);
 
       await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
     } catch (err: any) {
@@ -230,9 +353,9 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     const nextMessage = message.trim();
     if (!nextMessage) return;
 
-    console.log({ message: nextMessage });
-    setMessage("");
+    void handleSendMessage(nextMessage);
 
+    setMessage("");
     const textarea = textareaRef.current;
     if (textarea) textarea.style.height = "auto";
   }
@@ -306,9 +429,21 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
           <header className="relative z-20 mx-auto flex w-full max-w-[420px] items-center justify-between px-6 pt-6">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="h-9 w-9 rounded-full bg-[#545454]/20" />
-                {hasNotifications ? (
-                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500" />
+                <button
+                  type="button"
+                  onClick={() => router.push("/tasks")}
+                  aria-label="Go to tasks"
+                >
+                  <img
+                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png"
+                    alt="NS logo"
+                    className="h-9 w-9 object-contain"
+                  />
+                </button>
+                {pendingCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </span>
                 ) : null}
               </div>
 
@@ -320,13 +455,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="rounded-xl border border-slate-900/10 bg-white p-2.5 shadow-sm hover:bg-slate-50"
+              className="inline-flex items-center justify-center"
               aria-label="Open menu"
             >
-              <span className="flex flex-col gap-1.5">
-                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
-                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
-                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
+              <span className="flex flex-col gap-1">
+                <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                <span className="block h-[2px] w-6 bg-[#d8cd72]" />
               </span>
             </button>
           </header>
@@ -338,15 +473,52 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             </div>
           ) : null}
 
-          <section className="mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-[420px] items-center justify-center px-6 text-center">
-            <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Ready to help you improve.</h1>
+          <section className="mx-auto h-[calc(100vh-220px)] w-full max-w-[420px] overflow-y-auto px-6 pb-40 pt-6">
+            {messages.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-center">
+                <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Ready to help you improve.</h1>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {messages.map((item) => (
+                  <div
+                    key={item.id}
+                    className={cx("flex", item.role === "user" ? "justify-end" : "justify-start")}
+                  >
+                    <div
+                      className={cx(
+                        "max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-6",
+                        item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
+                      )}
+                    >
+                      {item.role === "assistant" && item.isTyping ? item.displayText ?? "" : item.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <div className="pointer-events-auto fixed inset-x-0 bottom-6 z-30 px-6">
-            <div className="pointer-events-auto mx-auto w-full max-w-[420px] rounded-3xl bg-[#545454] p-4">
-              <p className="mb-3 text-xs font-medium text-slate-300">Ask anything</p>
+            <div className="pointer-events-auto mx-auto w-full max-w-[420px] rounded-3xl bg-[#545454] p-3">
+              <div>
+                <textarea
+                  ref={textareaRef}
+                  value={message}
+                  onChange={(e) => handleComposerInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  rows={1}
+                  placeholder="Ask anything"
+                  className="pointer-events-auto mt-1 max-h-40 min-h-[24px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 text-white caret-white placeholder:text-slate-300/60 focus:outline-none"
+                />
+              </div>
 
-              <div className="flex items-end gap-2">
+              <div className="mt-1 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white"
@@ -355,45 +527,32 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                   +
                 </button>
 
-                <textarea
-                  ref={textareaRef}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  rows={1}
-                  placeholder=""
-                  className="pointer-events-auto max-h-40 min-h-[40px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm text-white placeholder:text-slate-300/60 focus:outline-none"
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-300/25"
+                    aria-label="Voice input"
+                  >
+                    <img
+                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018518/microphone_icon_transparent_lx4gyi.png"
+                      alt="Microphone"
+                      className="h-5 w-5 object-contain"
+                    />
+                  </button>
 
-                <button
-                  type="button"
-                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-300/25"
-                  aria-label="Voice input"
-                >
-                  <img
-                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018518/microphone_icon_transparent_lx4gyi.png"
-                    alt="Microphone"
-                    className="h-5 w-5 object-contain"
-                  />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={sendMessage}
-                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d8cd72]"
-                  aria-label="Send message"
-                >
-                  <img
-                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018519/up_arrow_icon_transparent_anehfo.png"
-                    alt="Send"
-                    className="h-5 w-5 object-contain"
-                  />
-                </button>
+                  <button
+                    type="button"
+                    onClick={sendMessage}
+                    className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d8cd72]"
+                    aria-label="Send message"
+                  >
+                    <img
+                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018519/up_arrow_icon_transparent_anehfo.png"
+                      alt="Send"
+                      className="h-5 w-5 object-contain"
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
