@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 import { useRouter } from "next/navigation";
@@ -39,6 +39,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [mounted, setMounted] = useState(false);
@@ -50,6 +51,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const hasNotifications = true;
 
   useEffect(() => setMounted(true), []);
 
@@ -215,6 +218,25 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     }
   }
 
+  function handleComposerInput(value: string) {
+    setMessage(value);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  }
+
+  function sendMessage() {
+    const nextMessage = message.trim();
+    if (!nextMessage) return;
+
+    console.log({ message: nextMessage });
+    setMessage("");
+
+    const textarea = textareaRef.current;
+    if (textarea) textarea.style.height = "auto";
+  }
+
   const SidebarContent = (
     <aside className="flex h-full w-[80vw] max-w-sm flex-col bg-white shadow-[0_24px_60px_rgba(15,23,42,0.20)]">
       <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
@@ -281,18 +303,33 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     <main className="min-h-screen bg-slate-50 text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          <div className="pointer-events-none fixed inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(216,205,114,0.22),transparent_42%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
-          </div>
+          <header className="relative z-20 mx-auto flex w-full max-w-[420px] items-center justify-between px-6 pt-6">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="h-9 w-9 rounded-full bg-[#545454]/20" />
+                {hasNotifications ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500" />
+                ) : null}
+              </div>
 
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            className="fixed left-5 top-5 z-30 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xl font-semibold text-[#d8cd72] shadow-sm hover:bg-slate-50"
-            aria-label="Open menu"
-          >
-            ☰
-          </button>
+              <p className="text-lg text-slate-900">
+                <span className="font-semibold">NS</span>{" "}
+                <span className="font-medium">Coach</span>
+              </p>
+            </div>
+
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="rounded-xl border border-slate-900/10 bg-white p-2.5 shadow-sm hover:bg-slate-50"
+              aria-label="Open menu"
+            >
+              <span className="flex flex-col gap-1.5">
+                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
+                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
+                <span className="block h-[1.5px] w-5 bg-[#d8cd72]" />
+              </span>
+            </button>
+          </header>
 
           {mobileMenuOpen ? (
             <div className="fixed inset-0 z-40">
@@ -301,52 +338,67 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             </div>
           ) : null}
 
-          <section className="relative mx-auto w-full max-w-[420px] px-6 pb-10 pt-6">
-            <div className="space-y-8">
-              <section>
-                <div className="rounded-[28px] bg-[#545454] px-6 py-6">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <h1 className="text-3xl font-bold tracking-tight text-[#cccd56]">
-                        Welcome Back, {currentUser?.user_metadata?.first_name ?? currentUser?.email?.split("@")[0] ?? "there"}
-                      </h1>
-                      <p className="mt-2 text-sm font-semibold text-[#cccd56]">Dashboard</p>
-                    </div>
-
-                    <img
-                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772013513/ChatGPT_Image_Feb_25_2026_11_57_51_AM_pgvrqc.png"
-                      alt="Dashboard illustration"
-                      className="h-28 w-28 shrink-0 object-contain"
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-slate-900">Up Next</h2>
-                  <span className="rounded-full bg-[#d8cd72]/25 px-2.5 py-1 text-xs font-semibold text-slate-900">{pendingTaskCount}</span>
-                </div>
-                <button
-                  onClick={() => router.push("/checkins/task/[taskId]")}
-                  className="mt-4 w-full rounded-2xl border border-slate-900/10 bg-white p-4 text-left hover:bg-slate-100"
-                >
-                  <p className="text-sm font-semibold text-slate-900">Complete your next check-in</p>
-                  <p className="mt-1 text-sm text-slate-600">Stay aligned with priorities and keep your progress current.</p>
-                </button>
-              </section>
-
-              <section>
-                <h2 className="text-xl font-semibold text-slate-900">Role Advice</h2>
-                <div className="mt-4 rounded-2xl border border-slate-900/10 bg-white p-6 text-center">
-                  <p className="text-sm font-semibold text-slate-900">No new updates</p>
-                  <p className="mt-1 text-sm text-slate-600">You have no ai insights</p>
-                </div>
-              </section>
-
-              {status ? <p className="text-sm text-slate-600">{status}</p> : null}
-            </div>
+          <section className="mx-auto flex min-h-[calc(100vh-220px)] w-full max-w-[420px] items-center justify-center px-6 text-center">
+            <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Ready to help you improve.</h1>
           </section>
+
+          <div className="pointer-events-auto fixed inset-x-0 bottom-6 z-30 px-6">
+            <div className="pointer-events-auto mx-auto w-full max-w-[420px] rounded-3xl bg-[#545454] p-4">
+              <p className="mb-3 text-xs font-medium text-slate-300">Ask anything</p>
+
+              <div className="flex items-end gap-2">
+                <button
+                  type="button"
+                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white"
+                  aria-label="Add"
+                >
+                  +
+                </button>
+
+                <textarea
+                  ref={textareaRef}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  rows={1}
+                  placeholder=""
+                  className="pointer-events-auto max-h-40 min-h-[40px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm text-white placeholder:text-slate-300/60 focus:outline-none"
+                />
+
+                <button
+                  type="button"
+                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-300/25"
+                  aria-label="Voice input"
+                >
+                  <img
+                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018518/microphone_icon_transparent_lx4gyi.png"
+                    alt="Microphone"
+                    className="h-5 w-5 object-contain"
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={sendMessage}
+                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d8cd72]"
+                  aria-label="Send message"
+                >
+                  <img
+                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018519/up_arrow_icon_transparent_anehfo.png"
+                    alt="Send"
+                    className="h-5 w-5 object-contain"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {status ? <p className="sr-only">{status}</p> : null}
         </>
       )}
     </main>
