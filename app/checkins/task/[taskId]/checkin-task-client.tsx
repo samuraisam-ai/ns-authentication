@@ -14,6 +14,20 @@ interface Task {
   created_at: string;
 }
 
+type Session = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+type MenuTask = {
+  id: string;
+  status: string;
+  scheduled_for: string;
+  template_key: string;
+  template_title: string;
+};
+
 function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
@@ -75,12 +89,24 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
   const [submitting, setSubmitting] = useState(false);
 
   const [mounted, setMounted] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(true);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<MenuTask[]>([]);
 
   const [banner, setBanner] = useState<{ type: "info" | "error" | "success"; text: string } | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    void loadSessions();
+  }, []);
+
+  useEffect(() => {
+    void fetchTasksForMenu();
+  }, []);
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -105,9 +131,55 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
     fetchTask();
   }, [taskId]);
 
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      if (!task?.user_id) {
+        setPendingCount(0);
+        return;
+      }
+
+      try {
+        const { count } = await supabase
+          .from("checkin_tasks")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", task.user_id)
+          .in("status", ["pending", "overdue"]);
+
+        setPendingCount(count ?? 0);
+      } catch {
+        setPendingCount(0);
+      }
+    };
+
+    void fetchPendingCount();
+  }, [supabase, task?.user_id]);
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/");
+  }
+
+  async function loadSessions() {
+    try {
+      const res = await fetch("/api/chat/sessions");
+      if (!res.ok) return;
+      const data = (await res.json()) as { sessions?: Session[] };
+      setSessions(data.sessions ?? []);
+    } catch {
+      setSessions([]);
+    }
+  }
+
+  async function fetchTasksForMenu() {
+    try {
+      const res = await fetch("/api/tasks");
+      if (!res.ok) return;
+      const data = await res.json();
+      const allTasks = (data.tasks ?? []) as MenuTask[];
+      setPendingTasks(allTasks.filter((item) => item.status === "pending" || item.status === "overdue"));
+    } catch {
+      setPendingTasks([]);
+    }
   }
 
   const handleSubmit = async (answers: Record<string, unknown>, missing: string[]) => {
@@ -147,75 +219,122 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
     }
   };
 
-  const Sidebar = (
-    <aside className={cx("flex h-full flex-col border-r border-slate-900/10 bg-white", sidebarOpenDesktop ? "w-80" : "w-20")}>
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-10 w-10 rounded-2xl bg-[#c7c85a]/30" />
-        {sidebarOpenDesktop ? (
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-slate-900">NetworkSpace</p>
-            <p className="text-xs text-slate-500">AI Check-Ins</p>
-          </div>
-        ) : null}
-
+  const SidebarContent = (
+    <aside className="fixed inset-0 z-50 flex h-full flex-col bg-white">
+      <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
         <button
-          onClick={() => setSidebarOpenDesktop((v) => !v)}
-          className={cx(
-            "ml-auto rounded-xl border border-slate-900/10 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50",
-            !sidebarOpenDesktop && "ml-0"
-          )}
-          aria-label="Toggle sidebar"
+          onClick={() => setMenuOpen(false)}
+          className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-lg font-semibold text-[#d8cd72] hover:bg-slate-50"
+          aria-label="Close menu"
         >
-          {sidebarOpenDesktop ? "⟨" : "⟩"}
+          ✕
         </button>
       </div>
 
-      <nav className="px-3">
-        {sidebarOpenDesktop ? (
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-        ) : null}
-
-        <div className="space-y-1">
+      <nav className="flex-1 overflow-hidden px-6 py-4">
+        <div className="flex h-full flex-col gap-2">
           <button
+            type="button"
             onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/workspace");
+              setMenuOpen(false);
+              router.push("/workspace?newChat=1");
             }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
           >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Workspace</span> : null}
+            New chat
           </button>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/tasks");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Tasks</span> : null}
-          </button>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setChatsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={chatsOpen}
+            >
+              <span>Your chats</span>
+              <span className="text-base leading-none text-slate-500">{chatsOpen ? "▾" : "▸"}</span>
+            </button>
+            {chatsOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {sessions.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {sessions.map((session) => (
+                        <button
+                          key={session.id}
+                          type="button"
+                          onClick={() => {
+                            router.push(`/workspace?sessionId=${session.id}`);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          {session.title || "Untitled chat"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No chats yet</p>
+                )}
+              </div>
+            ) : null}
+          </div>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              router.push("/inbox");
-            }}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-          >
-            <span className="h-2 w-2 rounded-full bg-slate-200" />
-            {sidebarOpenDesktop ? <span>Inbox</span> : null}
-          </button>
+          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
+            <button
+              type="button"
+              onClick={() => setTasksOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              aria-expanded={tasksOpen}
+            >
+              <span>Your tasks</span>
+              <span className="text-base leading-none text-slate-500">{tasksOpen ? "▾" : "▸"}</span>
+            </button>
+            {tasksOpen ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
+                {pendingTasks.length > 0 ? (
+                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
+                    <div className="space-y-2">
+                      {pendingTasks.map((menuTask) => (
+                        <button
+                          key={menuTask.id}
+                          type="button"
+                          onClick={() => {
+                            router.push(`/checkins/task/${menuTask.id}`);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
+                        >
+                          <p className="truncate font-semibold text-slate-900">
+                            {menuTask.template_title || menuTask.template_key || "Check-in"}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">Due {new Date(menuTask.scheduled_for).toLocaleString()}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No pending tasks</p>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </nav>
 
-      <div className="mt-auto border-t border-slate-900/10 px-5 py-4">
+      <div className="sticky bottom-0 mt-auto border-t border-slate-900/10 bg-white px-4 py-4">
         <button
           onClick={handleSignOut}
-          className="w-full rounded-2xl border border-slate-900/10 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
         >
+          <img
+            src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772030126/logout_icon_transparent_leznaq.png"
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-7 object-contain"
+          />
           Sign out
         </button>
       </div>
@@ -225,22 +344,175 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
   if (loading) return <div className="p-8 text-slate-600">Loading task…</div>;
   if (error || !task) return <div className="p-8 text-red-700">{error || "Task not found"}</div>;
 
+  const isDailyCheckin = task.template_key === "daily_checkin";
+  const isDailyCheckout = task.template_key === "daily_checkout";
+  const isDailyStyle = isDailyCheckin || isDailyCheckout;
+  const showDailySubmitDock = isDailyStyle && task.status !== "submitted" && Boolean(task.template_key);
+  const scheduledDate = new Date(task.scheduled_for);
+  const scheduledDateLabel = Number.isNaN(scheduledDate.getTime())
+    ? "--"
+    : new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(scheduledDate);
+
   return (
-    <main className="min-h-screen bg-white text-slate-900" suppressHydrationWarning>
+    <main className={cx("min-h-screen text-slate-900", isDailyStyle ? "bg-[#eaeaea]" : "bg-white")} suppressHydrationWarning>
       {!mounted ? null : (
         <>
+          {isDailyStyle ? (
+            <>
+              <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white px-5 py-4 md:px-10">
+                <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <button type="button" onClick={() => router.push("/tasks")} aria-label="Go to tasks">
+                        <img
+                          src="https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png"
+                          alt="NS logo"
+                          className="h-9 w-9 object-contain"
+                        />
+                      </button>
+                      {pendingCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+                          {pendingCount > 99 ? "99+" : pendingCount}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p className="text-lg text-slate-900">
+                      <span className="font-semibold">NS</span>{" "}
+                      <span className="font-medium">Coach</span>
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(true)}
+                    className="inline-flex items-center justify-center"
+                    aria-label="Open menu"
+                  >
+                    <span className="flex flex-col gap-1">
+                      <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                      <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                      <span className="block h-[2px] w-6 bg-[#d8cd72]" />
+                    </span>
+                  </button>
+                </div>
+              </header>
+
+              <button
+                type="button"
+                onClick={() => router.push("/tasks")}
+                className="w-full bg-[#b4b4b4] px-5 py-3 text-left text-sm font-semibold text-[#737373] md:px-10"
+                aria-label="Back To Tasks"
+              >
+                ← Back To Tasks
+              </button>
+
+              <div className="w-full bg-[#f0f1c9] px-5 py-5 md:px-10">
+                <div className="mx-auto w-full max-w-4xl px-3 md:px-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <h1 className="text-2xl font-bold text-slate-900">{isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}</h1>
+                    <span className="shrink-0 rounded-md bg-[#545454] px-3 py-1.5 text-sm font-bold text-white">{scheduledDateLabel}</span>
+                  </div>
+                  {isDailyCheckout ? (
+                    <>
+                      <p className="mt-3 text-sm text-slate-900">
+                        How did it go? For each of your 3 priorities, write what got done. Then mark the status:
+                      </p>
+                      <div className="mt-3 space-y-2.5">
+                        <div className="flex items-center gap-3">
+                          <span className="h-5 w-5 rounded-full bg-green-500" aria-hidden="true" />
+                          <span className="text-sm text-slate-900">100% done</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="h-5 w-5 rounded-full bg-orange-500" aria-hidden="true" />
+                          <span className="text-sm text-slate-900">50-75% done</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="h-5 w-5 rounded-full bg-red-500" aria-hidden="true" />
+                          <span className="text-sm text-slate-900">Less than 50% done</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="h-5 w-5 rounded-full bg-blue-500" aria-hidden="true" />
+                          <span className="text-sm text-slate-900">Deprioritised</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-900">
+                      List your top three priorities for today below. It should be easy to know if you got it done or not.at the end of the day.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="h-px w-full bg-[#545454]" />
+
+              {menuOpen ? SidebarContent : null}
+
+              <section
+                className={cx(
+                  "mx-auto w-full max-w-4xl px-7 pt-4 md:px-10 md:pt-6",
+                  showDailySubmitDock ? "pb-28" : "pb-8"
+                )}
+              >
+                <div className="mx-auto w-full max-w-2xl">
+                  {banner ? (
+                    <div
+                      className={cx(
+                        "mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold",
+                        banner.type === "success" && "border-emerald-300 bg-emerald-50 text-emerald-800",
+                        banner.type === "error" && "border-red-300 bg-red-50 text-red-800",
+                        banner.type === "info" && "border-slate-900/10 bg-slate-50 text-slate-800"
+                      )}
+                    >
+                      {banner.text}
+                    </div>
+                  ) : null}
+
+                  {task.status === "submitted" ? (
+                    <div className="rounded-3xl border border-emerald-300 bg-emerald-50 p-6 text-emerald-800">
+                      This task has already been submitted.
+                    </div>
+                  ) : !task.template_key ? (
+                    <div className="rounded-3xl border border-amber-300 bg-amber-50 p-6 text-amber-800">
+                      Task has no template assigned.
+                    </div>
+                  ) : (
+                    <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} />
+                  )}
+                </div>
+              </section>
+
+              {showDailySubmitDock ? (
+                <div className="fixed inset-x-0 bottom-0 z-40 w-full bg-[#545454] px-5 py-4 md:px-10">
+                  <div className="mx-auto w-full max-w-4xl">
+                    <button
+                      type="submit"
+                      form="daily-checkin-form"
+                      className="w-full rounded-2xl bg-[#d8cd72] py-3 text-sm font-bold text-white"
+                    >
+                      {isDailyCheckout ? "Submit Check-out" : "Submit Check-in"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
           <div className="pointer-events-none fixed inset-0">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(199,200,90,0.18),transparent_45%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_30%,rgba(15,23,42,0.06),transparent_55%)]" />
           </div>
 
           <div className="relative flex min-h-screen">
-            <div className="hidden md:block">{Sidebar}</div>
-
             <div className="md:hidden fixed left-0 right-0 top-0 z-20 border-b border-slate-900/10 bg-white/90 backdrop-blur">
               <div className="flex items-center justify-between px-4 py-3">
                 <button
-                  onClick={() => setMobileMenuOpen(true)}
+                  onClick={() => setMenuOpen(true)}
                   className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
                 >
                   Menu
@@ -255,14 +527,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
               </div>
             </div>
 
-            {mobileMenuOpen ? (
-              <div className="md:hidden fixed inset-0 z-30">
-                <div className="absolute inset-0 bg-black/30" onClick={() => setMobileMenuOpen(false)} />
-                <div className="absolute inset-y-0 left-0">
-                  <div className="h-full w-80">{Sidebar}</div>
-                </div>
-              </div>
-            ) : null}
+            {menuOpen ? SidebarContent : null}
 
             <section className="flex-1 px-5 pb-8 pt-20 md:px-10 md:pt-8">
               <div className="mx-auto w-full max-w-2xl">
@@ -283,20 +548,6 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                     {banner.text}
                   </div>
                 ) : null}
-
-                {/* Meta card */}
-                <div className="mb-6 rounded-3xl border border-slate-900/10 bg-white p-5">
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-700">
-                    <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1">
-                      <span className="text-slate-500">Status:</span> <span className="font-semibold">{task.status}</span>
-                    </span>
-                    <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1">
-                      <span className="text-slate-500">Scheduled:</span>{" "}
-                      <span className="font-semibold">{new Date(task.scheduled_for).toLocaleString()}</span>
-                    </span>
-                  </div>
-                </div>
-
                 {task.status === "submitted" ? (
                   <div className="rounded-3xl border border-emerald-300 bg-emerald-50 p-6 text-emerald-800">
                     This task has already been submitted.
@@ -311,6 +562,8 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
               </div>
             </section>
           </div>
+            </>
+          )}
         </>
       )}
     </main>
@@ -330,9 +583,17 @@ function FormRenderer({
 
   const handleChange = (key: string, value: unknown) => setFormData((prev) => ({ ...prev, [key]: value }));
 
+  const checkoutStatusKeys = ["done_100", "done_50_75", "less_than_50", "deprioritised"] as const;
+  const checkoutStatusColorByKey: Record<(typeof checkoutStatusKeys)[number], string> = {
+    done_100: "bg-green-500",
+    done_50_75: "bg-orange-500",
+    less_than_50: "bg-red-500",
+    deprioritised: "bg-blue-500",
+  };
+
   const requiredKeysByTemplate: Record<string, string[]> = {
-    daily_checkin: ["mood", "priorities"],
-    daily_checkout: ["completed_priorities", "accomplishments", "energy_level"],
+    daily_checkin: ["priority_1", "priority_2", "priority_3"],
+    daily_checkout: ["outcome_1", "outcome_2", "outcome_3", "status_1", "status_2", "status_3"],
     weekly_checkin: ["wins", "challenges", "next_goals", "satisfaction"],
     onboarding_profile: ["full_name", "role", "bio", "goals"],
   };
@@ -349,6 +610,68 @@ function FormRenderer({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (templateKey === "daily_checkin") {
+      const priority1 = String(formData.priority_1 ?? "").trim();
+      const priority2 = String(formData.priority_2 ?? "").trim();
+      const priority3 = String(formData.priority_3 ?? "").trim();
+
+      const combinedPriorities = `1) ${priority1}\n2) ${priority2}\n3) ${priority3}`;
+      onSubmit({ ...formData, priorities: combinedPriorities }, missing());
+      return;
+    }
+
+    if (templateKey === "daily_checkout") {
+      const outcome1 = String(formData.outcome_1 ?? "").trim();
+      const outcome2 = String(formData.outcome_2 ?? "").trim();
+      const outcome3 = String(formData.outcome_3 ?? "").trim();
+      const status1 = String(formData.status_1 ?? "").trim();
+      const status2 = String(formData.status_2 ?? "").trim();
+      const status3 = String(formData.status_3 ?? "").trim();
+
+      const combinedOutcomes = `1) ${outcome1}\n2) ${outcome2}\n3) ${outcome3}`;
+      const checkoutAnswers = {
+        ...formData,
+        accomplishments: combinedOutcomes,
+        outcomes: {
+          outcome_1: outcome1,
+          outcome_2: outcome2,
+          outcome_3: outcome3,
+        },
+        statuses: {
+          status_1: status1,
+          status_2: status2,
+          status_3: status3,
+        },
+        status_1: status1,
+        status_2: status2,
+        status_3: status3,
+        completed_priorities: formData.completed_priorities ?? "partial",
+        energy_level: formData.energy_level ?? 5,
+      };
+
+      const checkoutMissing = (requiredKeysByTemplate.daily_checkout ?? []).filter((k) => {
+        const v = checkoutAnswers[k as keyof typeof checkoutAnswers];
+        if (v === undefined || v === null) return true;
+        if (typeof v === "string" && v.trim() === "") return true;
+        return false;
+      });
+
+      const checkoutFieldLabels: Record<string, string> = {
+        outcome_1: "Task 1 outcome",
+        outcome_2: "Task 2 outcome",
+        outcome_3: "Task 3 outcome",
+        status_1: "Task 1 status",
+        status_2: "Task 2 status",
+        status_3: "Task 3 status",
+      };
+
+      onSubmit(
+        checkoutAnswers,
+        checkoutMissing.map((fieldKey) => checkoutFieldLabels[fieldKey] ?? fieldKey)
+      );
+      return;
+    }
+
     onSubmit(formData, missing());
   };
 
@@ -356,80 +679,98 @@ function FormRenderer({
     <div className="rounded-3xl border border-slate-900/10 bg-white p-6">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="mt-5 space-y-6">{children}</div>
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
-      >
-        {submitting ? "Submitting…" : "Submit"}
-      </button>
+      {templateKey !== "daily_checkin" ? (
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+        >
+          {submitting ? "Submitting…" : "Submit"}
+        </button>
+      ) : null}
     </div>
   );
 
   if (templateKey === "daily_checkin") {
     return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Daily Check-in">
-          <div>
-            <FieldLabel>How are you feeling today? (1–10)</FieldLabel>
-            <FieldHint>Be honest — this helps calibrate workload and focus.</FieldHint>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("mood", parseInt(e.target.value))}
-            />
+      <form id="daily-checkin-form" onSubmit={handleFormSubmit} className="space-y-4">
+        {[1, 2, 3].map((priorityNumber) => (
+          <div key={priorityNumber} className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">Priority Task {priorityNumber}</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <textarea
+                required
+                rows={1}
+                onChange={(e) => handleChange(`priority_${priorityNumber}`, e.target.value)}
+                onInput={(e) => {
+                  e.currentTarget.style.height = "auto";
+                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                }}
+                placeholder="Describe your task…"
+                className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
+              />
+            </div>
           </div>
-
-          <div>
-            <FieldLabel>What are your top 3 priorities today?</FieldLabel>
-            <FieldHint>Write full sentences. Clarity beats speed.</FieldHint>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("priorities", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Any blockers or concerns?</FieldLabel>
-            <FieldHint>If none, say “None”.</FieldHint>
-            <TextareaBase rows={3} onChange={(e) => handleChange("blockers", e.target.value)} />
-          </div>
-        </Section>
+        ))}
       </form>
     );
   }
 
   if (templateKey === "daily_checkout") {
     return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Daily Check-out">
-          <div>
-            <FieldLabel>Did you complete your priorities?</FieldLabel>
-            <FieldHint>Choose the closest option.</FieldHint>
-            <SelectBase required onChange={(e) => handleChange("completed_priorities", e.target.value)}>
-              <option value="">Select…</option>
-              <option value="yes">Yes</option>
-              <option value="partial">Partially</option>
-              <option value="no">No</option>
-            </SelectBase>
+      <form id="daily-checkin-form" onSubmit={handleFormSubmit} className="space-y-4">
+        {[
+          { number: 1, defaultStatus: "done_100" as const },
+          { number: 2, defaultStatus: "done_50_75" as const },
+          { number: 3, defaultStatus: "less_than_50" as const },
+        ].map(({ number, defaultStatus }) => (
+          <div key={number} className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex min-w-0 flex-1 items-center pl-7">
+                <p className="truncate text-sm font-semibold text-slate-800">{`{{Priority Task ${number} Description}}`}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const statusField = `status_${number}`;
+                  const current = String(formData[statusField] ?? "") as (typeof checkoutStatusKeys)[number] | "";
+                  const startIndex = checkoutStatusKeys.indexOf(defaultStatus);
+                  const currentIndex = checkoutStatusKeys.indexOf(current as (typeof checkoutStatusKeys)[number]);
+                  const nextStatus =
+                    currentIndex === -1
+                      ? checkoutStatusKeys[startIndex]
+                      : checkoutStatusKeys[(currentIndex + 1) % checkoutStatusKeys.length];
+                  handleChange(statusField, nextStatus);
+                }}
+                className={cx(
+                  "ml-3 h-11 w-11 shrink-0 rounded-full",
+                  checkoutStatusColorByKey[
+                    (String(formData[`status_${number}`] ?? "") as (typeof checkoutStatusKeys)[number]) || defaultStatus
+                  ]
+                )}
+                aria-label={`Priority ${number} status`}
+              />
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <textarea
+                rows={1}
+                onChange={(e) => handleChange(`outcome_${number}`, e.target.value)}
+                onInput={(e) => {
+                  e.currentTarget.style.height = "auto";
+                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                }}
+                placeholder="Describe the outcome..."
+                className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
+              />
+            </div>
           </div>
-
-          <div>
-            <FieldLabel>What did you accomplish today?</FieldLabel>
-            <FieldHint>List outcomes, not effort.</FieldHint>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("accomplishments", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Energy level at end of day (1–10)</FieldLabel>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("energy_level", parseInt(e.target.value))}
-            />
-          </div>
-        </Section>
+        ))}
       </form>
     );
   }
