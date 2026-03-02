@@ -415,9 +415,16 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
               <div className="w-full bg-[#f0f1c9] px-5 py-5 md:px-10">
                 <div className="mx-auto w-full max-w-4xl px-3 md:px-5">
                   <div className="flex items-start justify-between gap-4">
-                    <h1 className="text-2xl font-bold text-slate-900">
-                      {isWeekly ? "Weekly Check-out" : isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}
-                    </h1>
+                    <div className={cx(isWeekly && "min-w-0 flex-1")}>
+                      <h1
+                        className={cx(
+                          "font-bold text-slate-900",
+                          isWeekly ? "min-w-0 whitespace-nowrap truncate text-xl" : "text-2xl"
+                        )}
+                      >
+                        {isWeekly ? "Weekly Check-out" : isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}
+                      </h1>
+                    </div>
                     <span className="shrink-0 rounded-md bg-[#545454] px-3 py-1.5 text-sm font-bold text-white">{scheduledDateLabel}</span>
                   </div>
                   {isWeekly ? (
@@ -588,6 +595,7 @@ function FormRenderer({
   submitting: boolean;
 }) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [openStatusFor, setOpenStatusFor] = useState<null | 1 | 2 | 3>(null);
 
   const handleChange = (key: string, value: unknown) => setFormData((prev) => ({ ...prev, [key]: value }));
 
@@ -749,58 +757,82 @@ function FormRenderer({
   }
 
   if (templateKey === "daily_checkout") {
+    const statusOptions = [
+      { key: "done_100" as const, color: "bg-green-500", label: "100% done" },
+      { key: "done_50_75" as const, color: "bg-orange-500", label: "50-75% done" },
+      { key: "less_than_50" as const, color: "bg-red-500", label: "Less than 50% done" },
+      { key: "deprioritised" as const, color: "bg-blue-500", label: "Deprioritised" },
+    ];
+
     return (
-      <form id="daily-checkin-form" onSubmit={handleFormSubmit} className="space-y-4">
-        {[
-          { number: 1, defaultStatus: "done_100" as const },
-          { number: 2, defaultStatus: "done_50_75" as const },
-          { number: 3, defaultStatus: "less_than_50" as const },
-        ].map(({ number, defaultStatus }) => (
-          <div key={number} className="relative rounded-lg shadow-sm">
-            <div className="flex h-10 items-center">
-              <div className="relative flex h-full flex-1 items-center rounded-tl-lg bg-[#d8cd72]/25 pl-7 pr-4">
-                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
-                <p className="truncate text-sm font-semibold text-slate-800">{`{{Priority Task ${number} Description}}`}</p>
-              </div>
-              <div className="relative flex h-full w-20 items-center justify-end rounded-tr-lg bg-white pr-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const statusField = `status_${number}`;
-                    const current = String(formData[statusField] ?? "") as (typeof checkoutStatusKeys)[number] | "";
-                    const startIndex = checkoutStatusKeys.indexOf(defaultStatus);
-                    const currentIndex = checkoutStatusKeys.indexOf(current as (typeof checkoutStatusKeys)[number]);
-                    const nextStatus =
-                      currentIndex === -1
-                        ? checkoutStatusKeys[startIndex]
-                        : checkoutStatusKeys[(currentIndex + 1) % checkoutStatusKeys.length];
-                    handleChange(statusField, nextStatus);
-                  }}
-                  className={cx(
-                    "my-0 <h-05></h-05> <w-05></w-05> shrink-0 self-center rounded-full leading-none",
-                    checkoutStatusColorByKey[
-                      (String(formData[`status_${number}`] ?? "") as (typeof checkoutStatusKeys)[number]) || defaultStatus
-                    ]
+      <>
+        {openStatusFor !== null && (
+          <button
+            className="fixed inset-0 z-40"
+            onClick={() => setOpenStatusFor(null)}
+            aria-label="Close status menu"
+          />
+        )}
+        <form id="daily-checkin-form" onSubmit={handleFormSubmit} className="space-y-4">
+          {[
+            { number: 1, defaultStatus: "done_100" as const },
+            { number: 2, defaultStatus: "done_50_75" as const },
+            { number: 3, defaultStatus: "less_than_50" as const },
+          ].map(({ number, defaultStatus }) => (
+            <div key={number} className="relative rounded-lg shadow-sm">
+              <div className="flex h-10 items-center">
+                <div className="relative flex h-full flex-1 items-center rounded-tl-lg bg-[#d8cd72]/25 pl-7 pr-4">
+                  <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                  <p className="truncate text-sm font-semibold text-slate-800">{`{{Priority Task ${number} Description}}`}</p>
+                </div>
+                <div className="relative flex h-full w-16 items-center justify-end bg-white pr-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenStatusFor(openStatusFor === number ? null : (number as 1 | 2 | 3))}
+                    className={cx(
+                      "h-8 w-8 rounded-full",
+                      checkoutStatusColorByKey[
+                        (String(formData[`status_${number}`] ?? "") as (typeof checkoutStatusKeys)[number]) || defaultStatus
+                      ]
+                    )}
+                    aria-label={`Priority ${number} status`}
+                  />
+                  {openStatusFor === number && (
+                    <div className="absolute top-full right-0 z-50 mt-2 w-48 rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {statusOptions.map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => {
+                            handleChange(`status_${number}`, option.key);
+                            setOpenStatusFor(null);
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-slate-900 hover:bg-slate-50 first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          <span className={cx("h-5 w-5 rounded-full", option.color)} />
+                          <span>{option.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                  aria-label={`Priority ${number} status`}
+                </div>
+              </div>
+              <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+                <textarea
+                  rows={1}
+                  onChange={(e) => handleChange(`outcome_${number}`, e.target.value)}
+                  onInput={(e) => {
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                  }}
+                  placeholder="Describe the outcome..."
+                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
                 />
               </div>
             </div>
-            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
-              <textarea
-                rows={1}
-                onChange={(e) => handleChange(`outcome_${number}`, e.target.value)}
-                onInput={(e) => {
-                  e.currentTarget.style.height = "auto";
-                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                }}
-                placeholder="Describe the outcome..."
-                className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
-              />
-            </div>
-          </div>
-        ))}
-      </form>
+          ))}
+        </form>
+      </>
     );
   }
 
@@ -893,16 +925,16 @@ function FormRenderer({
     };
 
     return (
-      <form onSubmit={handleWeeklySubmit} className="space-y-4">
+      <form onSubmit={handleWeeklySubmit} className="space-y-6 pb-24">
         {weeklyFields.map((field) => (
-          <div key={field.key} className="relative rounded-md shadow-sm">
+          <div key={field.key} className="relative rounded-md bg-white shadow-lg transition-shadow duration-200 hover:shadow-xl">
             <div className="relative flex h-10 items-stretch rounded-t-md bg-[#f7f8dc] pr-4">
               <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
               <div className="flex flex-1 items-center px-4 pl-7">
                 <p className="text-sm font-semibold text-slate-800">{field.label}</p>
               </div>
             </div>
-            <div className="rounded-b-md bg-white px-4 py-3 shadow-sm">
+            <div className="rounded-b-md bg-white px-4 py-2.5">
               {field.type === "number" ? (
                 <input
                   required
@@ -910,12 +942,12 @@ function FormRenderer({
                   placeholder="#"
                   value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
                   onChange={(e) => handleChange(field.key, e.target.value)}
-                  className="w-full bg-white px-4 py-3 min-h-[56px] text-2xl font-semibold text-slate-900 placeholder:text-2xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
+                  className="h-10 w-full bg-white px-4 text-xl font-semibold text-slate-900 placeholder:text-xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
                 />
               ) : (
                 <textarea
                   required
-                  rows={1}
+                  rows={2}
                   value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   onInput={(e) => {
@@ -923,7 +955,7 @@ function FormRenderer({
                     e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
                   }}
                   placeholder={field.placeholder}
-                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-3 min-h-[80px] text-sm text-slate-900 placeholder:text-sm placeholder:font-medium placeholder-[#b8ad56] outline-none focus:outline-none leading-relaxed"
+                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-1 min-h-[32px] text-sm text-slate-900 placeholder:text-sm placeholder:font-medium placeholder-[#b8ad56] outline-none focus:outline-none leading-relaxed"
                 />
               )}
             </div>
