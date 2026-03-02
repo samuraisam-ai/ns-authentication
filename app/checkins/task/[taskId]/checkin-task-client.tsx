@@ -346,6 +346,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
 
   const isDailyCheckin = task.template_key === "daily_checkin";
   const isDailyCheckout = task.template_key === "daily_checkout";
+  const isWeekly = task.template_key === "weekly_checkin" || task.template_key === "weekly_checkout";
   const isDailyStyle = isDailyCheckin || isDailyCheckout;
   const showDailySubmitDock = isDailyStyle && task.status !== "submitted" && Boolean(task.template_key);
   const scheduledDate = new Date(task.scheduled_for);
@@ -361,7 +362,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
     <main className={cx("min-h-screen text-slate-900", isDailyStyle ? "bg-[#eaeaea]" : "bg-white")} suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          {isDailyStyle ? (
+          {isDailyCheckin || isDailyCheckout || isWeekly ? (
             <>
               <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white px-5 py-4 md:px-10">
                 <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
@@ -414,10 +415,17 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
               <div className="w-full bg-[#f0f1c9] px-5 py-5 md:px-10">
                 <div className="mx-auto w-full max-w-4xl px-3 md:px-5">
                   <div className="flex items-start justify-between gap-4">
-                    <h1 className="text-2xl font-bold text-slate-900">{isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}</h1>
+                    <h1 className="text-2xl font-bold text-slate-900">
+                      {isWeekly ? "Weekly Check-out" : isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}
+                    </h1>
                     <span className="shrink-0 rounded-md bg-[#545454] px-3 py-1.5 text-sm font-bold text-white">{scheduledDateLabel}</span>
                   </div>
-                  {isDailyCheckout ? (
+                  {isWeekly ? (
+                    <p className="mt-3 text-sm text-slate-900">
+                      Reflect on your week with honesty. Answer the questions below to capture what fueled you, what tested you,
+                      and what you’ll improve next week.
+                    </p>
+                  ) : isDailyCheckout ? (
                     <>
                       <p className="mt-3 text-sm text-slate-900">
                         How did it go? For each of your 3 priorities, write what got done. Then mark the status:
@@ -594,7 +602,22 @@ function FormRenderer({
   const requiredKeysByTemplate: Record<string, string[]> = {
     daily_checkin: ["priority_1", "priority_2", "priority_3"],
     daily_checkout: ["outcome_1", "outcome_2", "outcome_3", "status_1", "status_2", "status_3"],
-    weekly_checkin: ["wins", "challenges", "next_goals", "satisfaction"],
+    weekly_checkin: [
+      "leads_count",
+      "leads_explanation",
+      "viewings_count",
+      "viewings_explanation",
+      "leases_count",
+      "leases_explanation"
+    ],
+    weekly_checkout: [
+      "leads_count",
+      "leads_explanation",
+      "viewings_count",
+      "viewings_explanation",
+      "leases_count",
+      "leases_explanation"
+    ],
     onboarding_profile: ["full_name", "role", "bio", "goals"],
   };
 
@@ -685,7 +708,11 @@ function FormRenderer({
           disabled={submitting}
           className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
         >
-          {submitting ? "Submitting…" : "Submit"}
+          {submitting
+            ? "Submitting…"
+            : templateKey === "weekly_checkin" || templateKey === "weekly_checkout"
+              ? "Submit Check-out"
+              : "Submit"}
         </button>
       ) : null}
     </div>
@@ -730,32 +757,34 @@ function FormRenderer({
           { number: 3, defaultStatus: "less_than_50" as const },
         ].map(({ number, defaultStatus }) => (
           <div key={number} className="relative rounded-lg shadow-sm">
-            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
-              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
-              <div className="flex min-w-0 flex-1 items-center pl-7">
+            <div className="flex h-10 items-center">
+              <div className="relative flex h-full flex-1 items-center rounded-tl-lg bg-[#d8cd72]/25 pl-7 pr-4">
+                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
                 <p className="truncate text-sm font-semibold text-slate-800">{`{{Priority Task ${number} Description}}`}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const statusField = `status_${number}`;
-                  const current = String(formData[statusField] ?? "") as (typeof checkoutStatusKeys)[number] | "";
-                  const startIndex = checkoutStatusKeys.indexOf(defaultStatus);
-                  const currentIndex = checkoutStatusKeys.indexOf(current as (typeof checkoutStatusKeys)[number]);
-                  const nextStatus =
-                    currentIndex === -1
-                      ? checkoutStatusKeys[startIndex]
-                      : checkoutStatusKeys[(currentIndex + 1) % checkoutStatusKeys.length];
-                  handleChange(statusField, nextStatus);
-                }}
-                className={cx(
-                  "ml-3 h-11 w-11 shrink-0 rounded-full",
-                  checkoutStatusColorByKey[
-                    (String(formData[`status_${number}`] ?? "") as (typeof checkoutStatusKeys)[number]) || defaultStatus
-                  ]
-                )}
-                aria-label={`Priority ${number} status`}
-              />
+              <div className="relative flex h-full w-20 items-center justify-end rounded-tr-lg bg-white pr-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const statusField = `status_${number}`;
+                    const current = String(formData[statusField] ?? "") as (typeof checkoutStatusKeys)[number] | "";
+                    const startIndex = checkoutStatusKeys.indexOf(defaultStatus);
+                    const currentIndex = checkoutStatusKeys.indexOf(current as (typeof checkoutStatusKeys)[number]);
+                    const nextStatus =
+                      currentIndex === -1
+                        ? checkoutStatusKeys[startIndex]
+                        : checkoutStatusKeys[(currentIndex + 1) % checkoutStatusKeys.length];
+                    handleChange(statusField, nextStatus);
+                  }}
+                  className={cx(
+                    "my-0 <h-05></h-05> <w-05></w-05> shrink-0 self-center rounded-full leading-none",
+                    checkoutStatusColorByKey[
+                      (String(formData[`status_${number}`] ?? "") as (typeof checkoutStatusKeys)[number]) || defaultStatus
+                    ]
+                  )}
+                  aria-label={`Priority ${number} status`}
+                />
+              </div>
             </div>
             <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
               <textarea
@@ -775,36 +804,139 @@ function FormRenderer({
     );
   }
 
-  if (templateKey === "weekly_checkin") {
+  if (templateKey === "weekly_checkin" || templateKey === "weekly_checkout") {
+    const weeklyFields = [
+      {
+        label: "1.1) Leads created this week?",
+        key: "leads_created",
+        type: "number" as const,
+      },
+      {
+        label: "1.2) Explain what happened?",
+        key: "leads_explanation",
+        type: "text" as const,
+        placeholder: "Describe what contributed to the above result…",
+      },
+      {
+        label: "2.1) Viewings attended this week?",
+        key: "viewings_attended",
+        type: "number" as const,
+      },
+      {
+        label: "2.2) Explain what happened?",
+        key: "viewings_explanation",
+        type: "text" as const,
+        placeholder: "Describe what contributed to the above result…",
+      },
+      {
+        label: "3.1) Leases signed this week?",
+        key: "leases_signed",
+        type: "number" as const,
+      },
+      {
+        label: "3.2) Explain what happened?",
+        key: "leases_explanation",
+        type: "text" as const,
+        placeholder: "Describe what contributed to the above result…",
+      },
+    ];
+
+    // Map UI fields to clean answer keys
+    const answerKeyMap: Record<string, string> = {
+      leads_created: "leads_count",
+      leads_explanation: "leads_explanation",
+      viewings_attended: "viewings_count",
+      viewings_explanation: "viewings_explanation",
+      leases_signed: "leases_count",
+      leases_explanation: "leases_explanation",
+    };
+
+    // Map clean keys to readable labels for error banner
+    const readableWeeklyLabels: Record<string, string> = {
+      leads_count: "Leads created",
+      leads_explanation: "Leads explanation",
+      viewings_count: "Viewings attended",
+      viewings_explanation: "Viewings explanation",
+      leases_count: "Leases signed",
+      leases_explanation: "Leases explanation"
+    };
+
+    const handleWeeklySubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      // Build answers_json with correct keys and types
+      const answers_json: Record<string, string | number> = {};
+      for (const field of weeklyFields) {
+        const raw = formData[field.key];
+        const mappedKey = answerKeyMap[field.key];
+        if (field.type === "number") {
+          // Allow empty string while typing, otherwise parseInt
+          answers_json[mappedKey] = raw === undefined || raw === "" ? "" : parseInt(raw as string, 10);
+        } else {
+          answers_json[mappedKey] = typeof raw === "string" ? raw : "";
+        }
+      }
+      // Check for missing required fields using clean keys
+      const missingKeys = requiredKeysByTemplate[templateKey] || [];
+      const missingFields = missingKeys.filter((k) => {
+        const v = answers_json[k];
+        if (v === undefined || v === null || v === "") return true;
+        return false;
+      });
+      if (missingFields.length > 0) {
+        onSubmit(
+          { answers_json },
+          missingFields.map((k) => readableWeeklyLabels[k] || k)
+        );
+        return;
+      }
+      onSubmit({ answers_json }, []);
+    };
+
     return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Weekly Check-in">
-          <div>
-            <FieldLabel>What were your key wins this week?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("wins", e.target.value)} />
+      <form onSubmit={handleWeeklySubmit} className="space-y-4">
+        {weeklyFields.map((field) => (
+          <div key={field.key} className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">{field.label}</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              {field.type === "number" ? (
+                <input
+                  required
+                  type="number"
+                  placeholder="#"
+                  value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
+                  onChange={(e) => handleChange(field.key, e.target.value)}
+                  className="w-full bg-white text-3xl font-semibold text-slate-900 placeholder:text-3xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
+                />
+              ) : (
+                <textarea
+                  required
+                  rows={1}
+                  value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
+                  onChange={(e) => handleChange(field.key, e.target.value)}
+                  onInput={(e) => {
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                  }}
+                  placeholder={field.placeholder}
+                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
+                />
+              )}
+            </div>
           </div>
+        ))}
 
-          <div>
-            <FieldLabel>What challenges did you face?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("challenges", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>What are your goals for next week?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("next_goals", e.target.value)} />
-          </div>
-
-          <div>
-            <FieldLabel>Overall satisfaction (1–10)</FieldLabel>
-            <InputBase
-              type="number"
-              min="1"
-              max="10"
-              required
-              onChange={(e) => handleChange("satisfaction", parseInt(e.target.value))}
-            />
-          </div>
-        </Section>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+        >
+          {submitting ? "Submitting…" : "Submit Check-out"}
+        </button>
       </form>
     );
   }
