@@ -895,14 +895,14 @@ function FormRenderer({
     return (
       <form onSubmit={handleWeeklySubmit} className="space-y-4">
         {weeklyFields.map((field) => (
-          <div key={field.key} className="relative rounded-lg shadow-sm">
-            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+          <div key={field.key} className="relative rounded-md shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-md bg-[#f7f8dc] pr-4">
               <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
-              <div className="flex flex-1 items-center pl-7">
+              <div className="flex flex-1 items-center px-4 pl-7">
                 <p className="text-sm font-semibold text-slate-800">{field.label}</p>
               </div>
             </div>
-            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+            <div className="rounded-b-md bg-white px-4 py-3 shadow-sm">
               {field.type === "number" ? (
                 <input
                   required
@@ -910,7 +910,7 @@ function FormRenderer({
                   placeholder="#"
                   value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
                   onChange={(e) => handleChange(field.key, e.target.value)}
-                  className="w-full bg-white text-3xl font-semibold text-slate-900 placeholder:text-3xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
+                  className="w-full bg-white px-4 py-3 min-h-[56px] text-2xl font-semibold text-slate-900 placeholder:text-2xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
                 />
               ) : (
                 <textarea
@@ -923,7 +923,7 @@ function FormRenderer({
                     e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
                   }}
                   placeholder={field.placeholder}
-                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none focus:outline-none"
+                  className="w-full resize-none overflow-hidden rounded-md bg-white px-4 py-3 min-h-[80px] text-sm text-slate-900 placeholder:text-sm placeholder:font-medium placeholder-[#b8ad56] outline-none focus:outline-none leading-relaxed"
                 />
               )}
             </div>
