@@ -129,28 +129,33 @@ export default function EmailPasswordDemo({
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="flex min-h-screen items-start justify-center px-6 pb-24 pt-12">
-        <section className="w-full max-w-[420px]">
+      <div className="flex min-h-screen items-start justify-center px-0 pb-10 pt-20">
+        <section className="w-full max-w-[420px] px-0">
           <div className="flex flex-col items-center text-center">
             <img
-              src="https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png"
+              src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772450353/profile_badge_icon_transparent_okbfeo.png"
               alt="NetworkSpace logo"
-              className="h-28 w-28 object-contain"
+              className="h-50 w-50 object-contain"
             />
 
-            <h1 className="mt-8 text-[40px] font-semibold tracking-tight text-black">
-              {isSignupCopy ? "Create Account" : "Welcome"}
+            <h1 className="mt-2 text-[26px] tracking-tight text-black">
+              <span className="font-bold">NS</span>{" "}
+              <span className="font-medium">Coach</span>
             </h1>
-            <p className="mt-2 text-[13px] text-[#111111]/80">
-              {isSignupCopy
-                ? "Sign up to create your account"
-                : "Sign in to your account to continue"}
+            <p className="mt-1 text-[20px] font-bold" style={{ color: "#d8cd72" }}>
+              Plan it. Do it. Show progress.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-10 space-y-8">
+          <div className="mt-10 w-full bg-[#f4f4f4] py-8">
+            <div className="px-12">
+              <p className="text-center text-[16px] font-semibold text-black/70">
+                Sign in to your account to continue
+              </p>
+
+              <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div className="space-y-3">
-              <label className="block text-[16px] font-semibold text-black">
+              <label className="block text-[15px] font-semibold text-black">
                 Email
               </label>
               <input
@@ -159,7 +164,7 @@ export default function EmailPasswordDemo({
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="Enter your email"
-                className="w-full rounded-lg border border-black/25 bg-white px-4 py-4 text-[15px] text-black outline-none focus:border-black/40"
+                className="w-full rounded-md border border-black/25 bg-white px-4 py-2.5 text-[15px] text-black outline-none focus:border-black/40"
                 style={{ caretColor: ACCENT }}
               />
               <style jsx global>{`
@@ -173,7 +178,7 @@ export default function EmailPasswordDemo({
             </div>
 
             <div className="space-y-3">
-              <label className="block text-[16px] font-semibold text-black">
+              <label className="block text-[15px] font-semibold text-black">
                 Password
               </label>
               <input
@@ -183,7 +188,7 @@ export default function EmailPasswordDemo({
                 required
                 minLength={6}
                 placeholder="Enter your password"
-                className="w-full rounded-lg border border-black/25 bg-white px-4 py-4 text-[15px] text-black outline-none focus:border-black/40"
+                className="w-full rounded-md border border-black/25 bg-white px-4 py-2.5 text-[15px] text-black outline-none focus:border-black/40"
                 style={{ caretColor: ACCENT }}
               />
 
@@ -201,7 +206,7 @@ export default function EmailPasswordDemo({
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-5 w-5 rounded border border-black/25"
+                className="h-3 w-3 rounded border border-black/25"
                 style={{ accentColor: ACCENT }}
               />
               <label htmlFor="remember" className="text-[14px] font-semibold text-black/60">
@@ -212,7 +217,7 @@ export default function EmailPasswordDemo({
             <div className="flex justify-center">
               <button
                 type="submit"
-                className="rounded-lg px-10 py-4 text-[16px] font-semibold text-white shadow-sm active:translate-y-[1px]"
+                className="rounded-lg px-10 py-3 text-[16px] font-semibold text-white shadow-sm active:translate-y-[1px]"
                 style={{ backgroundColor: ACCENT }}
               >
                 {isSignupCopy ? "Sign up" : "Sign in"}
@@ -229,19 +234,20 @@ export default function EmailPasswordDemo({
               </Link>
             </div>
 
-            {status ? (
-              <p className="text-center text-[13px] text-black/60">{status}</p>
-            ) : null}
-          </form>
+              {status ? (
+                <p className="text-center text-[13px] text-black/60">{status}</p>
+              ) : null}
+            </form>
+            </div>
+          </div>
         </section>
       </div>
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-black py-6">
-        <div className="mx-auto flex max-w-[420px] items-center justify-center gap-3 px-6">
-          <img src={NS_LOGO} alt="NS logo" className="h-7 w-auto object-contain" />
-          <p className="text-3xl tracking-tight text-white">
+      <footer className="fixed bottom-0 left-0 right-0 bg-[#545454] py-1">
+        <div className="mx-auto flex max-w-[420px] items-center justify-center gap-2 px-6">
+          <p className="text-2xl tracking-tight text-white">
             <span className="font-bold">NS</span>{" "}
-            <span className="font-light">Assistant</span>
+            <span className="font-medium">Coach</span>
           </p>
         </div>
       </footer>
