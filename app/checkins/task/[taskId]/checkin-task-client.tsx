@@ -594,10 +594,16 @@ function FormRenderer({
   onSubmit: (answers: Record<string, unknown>, missing: string[]) => void;
   submitting: boolean;
 }) {
-  const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [formData, setFormData] = useState<Record<string, string | number | boolean | null>>({});
   const [openStatusFor, setOpenStatusFor] = useState<null | 1 | 2 | 3>(null);
 
-  const handleChange = (key: string, value: unknown) => setFormData((prev) => ({ ...prev, [key]: value }));
+  const handleChange = (key: string, value: string | number | boolean | null) =>
+    setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const getInputValue = (key: string): string | number => {
+    const value = formData[key];
+    return typeof value === "string" || typeof value === "number" ? value : "";
+  };
 
   const checkoutStatusKeys = ["done_100", "done_50_75", "less_than_50", "deprioritised"] as const;
   const checkoutStatusColorByKey: Record<(typeof checkoutStatusKeys)[number], string> = {
@@ -940,7 +946,7 @@ function FormRenderer({
                   required
                   type="number"
                   placeholder="#"
-                  value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
+                  value={getInputValue(field.key)}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   className="h-10 w-full bg-white px-4 text-xl font-semibold text-slate-900 placeholder:text-xl placeholder:font-semibold placeholder:text-[#b8ad56] outline-none"
                 />
@@ -948,7 +954,7 @@ function FormRenderer({
                 <textarea
                   required
                   rows={2}
-                  value={typeof formData[field.key] === "string" || typeof formData[field.key] === "number" ? formData[field.key] : ""}
+                  value={getInputValue(field.key)}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   onInput={(e) => {
                     e.currentTarget.style.height = "auto";
