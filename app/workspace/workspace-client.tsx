@@ -611,10 +611,10 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   );
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900" suppressHydrationWarning>
+    <main className="min-h-screen bg-[#eaeaea] text-slate-900" suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          <header className="relative z-20 mx-auto flex w-full max-w-[420px] items-center justify-between px-6 pt-6">
+          <header className="relative z-20 mx-auto flex w-full max-w-[420px] items-center justify-between bg-white px-6 pt-6 pb-6">
             <div className="flex items-center gap-3">
               <div className="relative">
                 <button
@@ -656,35 +656,37 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
           {mobileMenuOpen ? SidebarContent : null}
 
-          <section className="mx-auto h-[calc(100vh-220px)] w-full max-w-[420px] overflow-y-auto px-6 pb-40 pt-6">
+          <section className="mx-auto w-full max-w-[420px] px-6">
             {messages.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-center">
+              <div className="flex h-[calc(100vh-160px)] items-center justify-center text-center">
                 <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Ready to help you improve.</h1>
               </div>
             ) : (
-              <div className="space-y-3">
-                {messages.map((item) => (
-                  <div
-                    key={item.id}
-                    className={cx("flex", item.role === "user" ? "justify-end" : "justify-start")}
-                  >
+              <div className="h-[calc(100vh-220px)] overflow-y-auto pb-40 pt-6">
+                <div className="space-y-3">
+                  {messages.map((item) => (
                     <div
-                      className={cx(
-                        "max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-6",
-                        item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
-                      )}
+                      key={item.id}
+                      className={cx("flex", item.role === "user" ? "justify-end" : "justify-start")}
                     >
-                      {item.role === "assistant" && item.isTyping ? item.displayText ?? "" : item.content}
+                      <div
+                        className={cx(
+                          "max-w-[85%] rounded-2xl px-4 py-2 text-sm leading-6",
+                          item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
+                        )}
+                      >
+                        {item.role === "assistant" && item.isTyping ? item.displayText ?? "" : item.content}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </section>
 
           <div className="pointer-events-auto fixed inset-x-0 bottom-6 z-30 px-6">
-            <div className="pointer-events-auto mx-auto w-full max-w-[420px] rounded-3xl bg-[#545454] p-3">
-              <div>
+            <div className="pointer-events-auto mx-auto w-full max-w-[420px] rounded-3xl bg-white p-3 shadow-sm">
+              <div className="flex items-end gap-3">
                 <textarea
                   ref={textareaRef}
                   value={message}
@@ -696,46 +698,22 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                     }
                   }}
                   rows={1}
-                  placeholder="Ask anything"
-                  className="pointer-events-auto mt-1 max-h-40 min-h-[24px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 text-white caret-white placeholder:text-slate-300/60 focus:outline-none"
+                  placeholder="Ask anything..."
+                  className="min-h-[44px] max-h-40 w-full flex-1 resize-none overflow-y-auto rounded-2xl bg-white px-4 py-3 text-sm leading-5 text-slate-900 caret-slate-900 placeholder:text-slate-400 focus:outline-none"
                 />
-              </div>
 
-              <div className="mt-1 flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-lg font-semibold text-white"
-                  aria-label="Add"
+                  onClick={sendMessage}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#d8cd72]"
+                  aria-label="Send message"
                 >
-                  +
+                  <img
+                    src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018519/up_arrow_icon_transparent_anehfo.png"
+                    alt="Send"
+                    className="h-5 w-5 object-contain"
+                  />
                 </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-300/25"
-                    aria-label="Voice input"
-                  >
-                    <img
-                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018518/microphone_icon_transparent_lx4gyi.png"
-                      alt="Microphone"
-                      className="h-5 w-5 object-contain"
-                    />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={sendMessage}
-                    className="pointer-events-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d8cd72]"
-                    aria-label="Send message"
-                  >
-                    <img
-                      src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772018519/up_arrow_icon_transparent_anehfo.png"
-                      alt="Send"
-                      className="h-5 w-5 object-contain"
-                    />
-                  </button>
-                </div>
               </div>
             </div>
           </div>

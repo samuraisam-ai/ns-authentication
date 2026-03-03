@@ -30,6 +30,12 @@ function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
+const TASK_DESCRIPTIONS: Record<string, string> = {
+  daily_checkin: "Set today’s priorities",
+  daily_checkout: "Review results + status.",
+  weekly_checkin: "Reflect + plan improvements.",
+};
+
 export default function TasksClient() {
   const router = useRouter();
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -315,10 +321,10 @@ export default function TasksClient() {
                   </button>
                 </div>
 
-                <div className="absolute bottom-0 left-0 h-px w-full bg-slate-300" />
+                <div className="absolute bottom-0 left-0 h-px w-full bg-black/70" />
                 <div
                   className={cx(
-                    "absolute bottom-0 h-0.5 w-1/2 bg-[#d8cd72] transition-all duration-300",
+                    "absolute bottom-0 h-1 w-1/2 bg-[#cccd33] transition-all duration-300",
                     activeTab === "pending" ? "left-0" : "left-1/2"
                   )}
                 />
@@ -339,31 +345,34 @@ export default function TasksClient() {
                 <p className="text-sm text-slate-600">{activeTab === "pending" ? "No pending tasks." : "No completed tasks yet."}</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-6">
                 {displayTasks.map((task) => {
+                  const description = TASK_DESCRIPTIONS[task.template_key] ?? "";
+                  const displayTitle = task.template_key === "weekly_checkin" ? "Weekly Check-out" : task.template_title || task.template_key;
+
                   return (
                     <button
                       key={task.id}
                       onClick={() => router.push(`/checkins/task/${task.id}`)}
-                      className="relative w-full rounded-xl bg-white text-left shadow-sm transition hover:shadow"
+                      className="relative w-full rounded-lg bg-white text-left shadow-md shadow-black/30 hover:shadow-lg hover:shadow-black/40 transition-shadow"
                     >
                       <div className="min-w-0 flex-1">
-                          <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                          <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#cccd33]" />
                           <div className="flex h-10 items-center">
-                            <div className="min-w-0 flex h-full flex-1 items-center rounded-tl-xl bg-[#d8cd72]/25 px-4 pl-7">
-                              <h3 className="truncate text-base font-bold text-black">{task.template_title || task.template_key}</h3>
+                            <div className="min-w-0 flex h-full flex-1 items-center rounded-tl-lg bg-[#cccd33]/25 px-4 pl-3">
+                              <h3 className="truncate text-[18px] font-bold text-black">{displayTitle}</h3>
                             </div>
-                            <div className="flex h-full items-center gap-2 rounded-tr-xl bg-[#545454] px-4 text-white">
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex h-full items-center gap-2 rounded-tr-lg bg-[#545454] px-4 text-white">
+                              <span className="text-[16px] font-semibold">{formatMockTime(task.scheduled_for)}</span>
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <circle cx="12" cy="12" r="9" strokeWidth="2" />
                                 <path d="M12 7v5l3 2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
-                              <span className="text-sm font-semibold">{formatMockTime(task.scheduled_for)}</span>
                             </div>
                           </div>
 
-                          <div className="min-h-[64px] rounded-b-xl bg-white px-4 py-4">
-                            <p className="text-sm text-slate-500">Update the team on your progress and blockers</p>
+                          <div className="min-h-[64px] rounded-b-lg bg-white px-4 py-4">
+                            <p className="text-[16px] text-[#8f8f8f]">{description}</p>
                           </div>
                       </div>
                     </button>
