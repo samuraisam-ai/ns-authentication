@@ -9,13 +9,7 @@ export default async function TasksPage() {
     error,
   } = await supabase.auth.getUser();
 
-  if (error || !user) {
-    redirect("/");
-  }
+  if (error || !user) redirect("/");
 
-  return (
-    <div className="min-h-screen p-8">
-      <TasksClient />
-    </div>
-  );
+  return <TasksClient />;
 }

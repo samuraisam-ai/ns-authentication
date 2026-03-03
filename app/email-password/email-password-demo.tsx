@@ -1,13 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
-
-type Props = { user: User | null };
+type Props = {
+  user: User | null;
+  defaultMode?: "signin" | "signup";
+  copyVariant?: "signin" | "signup";
+};
 type Mode = "signup" | "signin";
 
 function getAllowlists() {
@@ -52,25 +55,35 @@ function isAuthorized(user: User | null) {
   });
 }
 
-export default function EmailPasswordDemo({ user: initialUser }: Props) {
+const ACCENT = "#d8cd72";
+const NS_LOGO =
+  "https://res.cloudinary.com/dtjysgyny/image/upload/v1771966266/NS_Logos-01_1_2_snskdp.png";
+
+export default function EmailPasswordDemo({
+  user: initialUser,
+  defaultMode = "signin",
+  copyVariant = "signin",
+}: Props) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mode, setMode] = useState<Mode>("signup");
+
+  const [mode, setMode] = useState<Mode>(defaultMode);
+  const isSignupCopy = copyVariant === "signup";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [status, setStatus] = useState("");
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
+
   const fromAuth = searchParams.get("fromAuth") === "1";
   const isAuthedAndAuthorized = isAuthorized(currentUser);
-
-  const isActive = Boolean(currentUser);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user ?? null);
     });
-
     return () => listener.subscription.unsubscribe();
   }, [supabase]);
 
@@ -97,232 +110,147 @@ export default function EmailPasswordDemo({ user: initialUser }: Props) {
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setStatus(error ? `Error: ${error.message}` : "Success: Signed in.");
-    if (!error) router.push("/email-password?fromAuth=1");
+    if (!error) router.replace("/workspace");
   }
 
-  async function handleSignOut() {
+  async function handleForgotPassword() {
     setStatus("");
-    const { error } = await supabase.auth.signOut();
-    if (error) setStatus(`Error: ${error.message}`);
-    else {
-      setCurrentUser(null);
-      setStatus("Signed out successfully.");
+    if (!email) {
+      setStatus("Enter your email first, then click Forgot Password.");
+      return;
     }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/email-password?fromAuth=1`,
+    });
+
+    setStatus(error ? `Error: ${error.message}` : "Password reset email sent (if the account exists).");
   }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      {/* subtle futuristic background */}
-      <div className="pointer-events-none fixed inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(16,185,129,0.14),transparent_35%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_40%,rgba(2,6,23,0.08),transparent_45%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.02),transparent_30%,rgba(2,6,23,0.02))]" />
-      </div>
+    <main className="min-h-screen bg-white">
+      <div className="flex min-h-screen items-start justify-center px-0 pb-10 pt-20">
+        <section className="w-full max-w-[420px] px-0">
+          <div className="flex flex-col items-center text-center">
+            <img
+              src="https://res.cloudinary.com/dtjysgyny/image/upload/v1772450353/profile_badge_icon_transparent_okbfeo.png"
+              alt="NetworkSpace logo"
+              className="h-50 w-50 object-contain"
+            />
 
-      <div className="relative mx-auto w-full max-w-3xl px-6 py-10">
-        <Link href="/" className="text-sm font-medium text-slate-500 hover:text-slate-800">
-          ← Back to Home
-        </Link>
-
-        <section className="mt-6 rounded-[32px] bg-white p-8 shadow-[0_22px_70px_rgba(2,6,23,0.10)] ring-1 ring-slate-900/10">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Flow
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">Email + Password</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
-                Classic credentials—users enter details, Supabase secures the rest while{" "}
-                <span className="font-medium text-slate-800">getSession</span> +{" "}
-                <span className="font-medium text-slate-800">onAuthStateChange</span> keep the UI live.
-              </p>
-
-              <ol className="mt-5 space-y-2 text-sm text-slate-700">
-                <li className="flex gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Toggle between sign up and sign in.
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Submit to watch the session card refresh instantly.
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Sign out to reset the listener.
-                </li>
-              </ol>
-            </div>
-
-            <div className="shrink-0">
-              <span
-                className={[
-                  "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold",
-                  isActive
-                    ? "border-emerald-500/25 bg-emerald-50 text-emerald-700"
-                    : "border-slate-900/10 bg-slate-50 text-slate-600",
-                ].join(" ")}
-              >
-                {isActive ? "Active" : "Idle"}
-              </span>
-            </div>
+            <h1 className="mt-2 text-[26px] tracking-tight text-black">
+              <span className="font-bold">NS</span>{" "}
+              <span className="font-medium">Coach</span>
+            </h1>
+            <p className="mt-1 text-[20px] font-bold" style={{ color: "#d8cd72" }}>
+              Plan it. Do it. Show progress.
+            </p>
           </div>
 
-          <div className="mt-7 grid gap-6 lg:grid-cols-2">
-            {/* Credentials */}
-            {!currentUser ? (
-              <div className="rounded-3xl border border-slate-900/10 bg-slate-50 p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Credentials
-                </p>
+          <div className="mt-10 w-full bg-[#f4f4f4] py-8">
+            <div className="px-12">
+              <p className="text-center text-[16px] font-semibold text-black/70">
+                Sign in to your account to continue
+              </p>
 
-                <div className="mt-4 flex items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    {mode === "signup" ? "Create an account" : "Welcome back"}
-                  </h2>
+              <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="space-y-3">
+              <label className="block text-[15px] font-semibold text-black">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="Enter your email"
+                className="w-full rounded-md border border-black/25 bg-white px-4 py-2.5 text-[15px] text-black outline-none focus:border-black/40"
+                style={{ caretColor: ACCENT }}
+              />
+              <style jsx global>{`
+                input::placeholder {
+                  color: ${ACCENT};
+                  font-style: italic;
+                  font-weight: 600;
+                  opacity: 1;
+                }
+              `}</style>
+            </div>
 
-                  <div className="flex rounded-full border border-slate-900/10 bg-white p-1 text-xs font-semibold">
-                    {(["signup", "signin"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setMode(m)}
-                        aria-pressed={mode === m}
-                        className={[
-                          "rounded-full px-3 py-1.5 transition",
-                          mode === m
-                            ? "bg-emerald-500/15 text-emerald-800"
-                            : "text-slate-600 hover:text-slate-900",
-                        ].join(" ")}
-                      >
-                        {m === "signup" ? "Sign up" : "Sign in"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            <div className="space-y-3">
+              <label className="block text-[15px] font-semibold text-black">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder="Enter your password"
+                className="w-full rounded-md border border-black/25 bg-white px-4 py-2.5 text-[15px] text-black outline-none focus:border-black/40"
+                style={{ caretColor: ACCENT }}
+              />
 
-                <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Email
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      placeholder="you@email.com"
-                      className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-2.5 text-base text-slate-900 placeholder-slate-400 shadow-sm focus:border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </label>
+              <Link
+                href="/coming-soon"
+                className="mt-2 inline-block text-left text-[14px] italic text-black/40 hover:text-black/60"
+              >
+                Forgot Password?
+              </Link>
+            </div>
 
-                  <label className="block text-sm font-medium text-slate-700">
-                    Password
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      placeholder="At least 6 characters"
-                      className="mt-2 w-full rounded-2xl border border-slate-900/10 bg-white px-3 py-2.5 text-base text-slate-900 placeholder-slate-400 shadow-sm focus:border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </label>
+            <div className="flex items-center gap-3">
+              <input
+                id="remember"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-3 w-3 rounded border border-black/25"
+                style={{ accentColor: ACCENT }}
+              />
+              <label htmlFor="remember" className="text-[14px] font-semibold text-black/60">
+                Remember me next time
+              </label>
+            </div>
 
-                  <button
-                    type="submit"
-                    className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  >
-                    {mode === "signup" ? "Create account" : "Sign in"}
-                  </button>
+            <div className="flex justify-center">
+              <button
+                type="submit"
+                className="rounded-lg px-10 py-3 text-[16px] font-semibold text-white shadow-sm active:translate-y-[1px]"
+                style={{ backgroundColor: ACCENT }}
+              >
+                {isSignupCopy ? "Sign up" : "Sign in"}
+              </button>
+            </div>
 
-                  {status ? <p className="text-sm text-slate-600">{status}</p> : null}
-                </form>
-              </div>
-            ) : (
-              <div className="rounded-3xl border border-emerald-500/20 bg-emerald-50 p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-                  Signed in
-                </p>
-                <p className="mt-2 text-sm text-slate-700">
-                  You’re authenticated. Use the session panel to verify metadata.
-                </p>
+            <div className="text-center text-[14px] font-semibold text-black/55">
+              {isSignupCopy ? "Already have an account? " : "Need an account, "}
+              <Link
+                href={isSignupCopy ? "/" : "/register"}
+                className="text-black/70 hover:text-black underline underline-offset-4"
+              >
+                {isSignupCopy ? "Sign in" : "register"}
+              </Link>
+            </div>
 
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="mt-5 inline-flex w-full items-center justify-center rounded-full border border-slate-900/10 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
-                >
-                  Sign out
-                </button>
-
-                {status ? <p className="mt-3 text-sm text-slate-600">{status}</p> : null}
-                {isAuthedAndAuthorized && fromAuth ? (
-                  <button
-                    type="button"
-                    onClick={() => router.push("/workspace")}
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  >
-                    Continue
-                  </button>
-                ) : null}
-              </div>
-            )}
-
-            {/* Session */}
-            <div className="rounded-3xl border border-slate-900/10 bg-white p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Session
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {currentUser
-                      ? "Hydrated by getSession + onAuthStateChange."
-                      : "Sign in to hydrate this panel instantly."}
-                  </p>
-                </div>
-                <span
-                  className={[
-                    "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold",
-                    currentUser
-                      ? "border-emerald-500/25 bg-emerald-50 text-emerald-700"
-                      : "border-slate-900/10 bg-slate-50 text-slate-600",
-                  ].join(" ")}
-                >
-                  {currentUser ? "Active" : "Idle"}
-                </span>
-              </div>
-
-              {currentUser ? (
-                <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-50/40 p-4">
-                  <dl className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between gap-6">
-                      <dt className="text-slate-500">Email</dt>
-                      <dd className="truncate font-medium text-slate-900">{currentUser.email}</dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-6">
-                      <dt className="text-slate-500">User ID</dt>
-                      <dd className="max-w-[18rem] truncate font-mono text-xs text-slate-800">
-                        {currentUser.id}
-                      </dd>
-                    </div>
-                    <div className="flex items-center justify-between gap-6">
-                      <dt className="text-slate-500">Last sign in</dt>
-                      <dd className="text-slate-800">
-                        {currentUser.last_sign_in_at
-                          ? new Date(currentUser.last_sign_in_at).toLocaleString()
-                          : "N/A"}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              ) : (
-                <div className="mt-5 rounded-2xl border border-dashed border-slate-900/10 bg-slate-50 p-5 text-sm text-slate-500">
-                  Session metadata will show up here after a successful sign in.
-                </div>
-              )}
+              {status ? (
+                <p className="text-center text-[13px] text-black/60">{status}</p>
+              ) : null}
+            </form>
             </div>
           </div>
         </section>
       </div>
+
+      <footer className="fixed bottom-0 left-0 right-0 bg-[#545454] py-1">
+        <div className="mx-auto flex max-w-[420px] items-center justify-center gap-2 px-6">
+          <p className="text-2xl tracking-tight text-white">
+            <span className="font-bold">NS</span>{" "}
+            <span className="font-medium">Coach</span>
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }
