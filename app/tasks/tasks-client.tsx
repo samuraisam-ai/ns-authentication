@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
+import { MENU_BUBBLE_BUTTON, MENU_EXPANDABLE_BUTTON } from "@/lib/menu-styles";
 
 interface Task {
   id: string;
@@ -125,7 +126,7 @@ export default function TasksClient() {
 
   const SidebarContent = (
     <aside className="fixed inset-0 z-50 flex h-full flex-col bg-white">
-      <div className="flex items-center justify-between border-b border-slate-900/10 px-5 py-4">
+      <div className="flex items-center justify-between border-b border-slate-900/10 px-8 py-4">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
         <button
           onClick={() => setMenuOpen(false)}
@@ -144,16 +145,16 @@ export default function TasksClient() {
               setMenuOpen(false);
               router.push("/workspace?newChat=1");
             }}
-            className="flex w-full items-center rounded-2xl border border-slate-900/10 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
+            className={MENU_BUBBLE_BUTTON}
           >
             New chat
           </button>
 
-          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
+          <div className={cx("bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
             <button
               type="button"
               onClick={() => setChatsOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              className={MENU_EXPANDABLE_BUTTON}
               aria-expanded={chatsOpen}
             >
               <span>Your chats</span>
@@ -186,11 +187,11 @@ export default function TasksClient() {
             ) : null}
           </div>
 
-          <div className={cx("rounded-2xl border border-slate-900/10 bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
+          <div className={cx("bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
             <button
               type="button"
               onClick={() => setTasksOpen((prev) => !prev)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+              className={MENU_EXPANDABLE_BUTTON}
               aria-expanded={tasksOpen}
             >
               <span>Your tasks</span>
