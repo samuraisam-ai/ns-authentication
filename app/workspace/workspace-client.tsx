@@ -5,6 +5,8 @@ import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MENU_BUBBLE_BUTTON, MENU_EXPANDABLE_BUTTON } from "@/lib/menu-styles";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Props = { user: User | null };
 
@@ -16,6 +18,7 @@ type Message = {
   isTyping?: boolean;
   fullText?: string;
   displayText?: string;
+  reply?: string;
 };
 
 type Session = {
@@ -376,6 +379,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         fullText: assistantText,
         displayText: "",
         isTyping: true,
+        reply: data.reply,
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -676,7 +680,28 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                           item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
                         )}
                       >
-                        {item.role === "assistant" && item.isTyping ? item.displayText ?? "" : item.content}
+                        {item.role === "assistant" && item.isTyping ? (
+                          item.displayText ?? ""
+                        ) : item.role === "assistant" ? (
+                          <div
+                            className="
+                              prose prose-sm max-w-none text-slate-900 leading-relaxed
+                              prose-headings:mt-4 prose-headings:mb-2
+                              prose-p:my-2
+                              prose-ul:my-2 prose-ul:pl-5 prose-ul:list-disc
+                              prose-ol:my-2 prose-ol:pl-5 prose-ol:list-decimal
+                              prose-li:my-1
+                              prose-strong:font-semibold
+                              prose-headings:text-slate-900
+                            "
+                          >
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {String(item.reply ?? item.content ?? "")}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          item.content
+                        )}
                       </div>
                     </div>
                   ))}
