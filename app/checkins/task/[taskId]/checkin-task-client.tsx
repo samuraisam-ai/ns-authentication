@@ -197,11 +197,20 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
     setBanner(null);
 
     try {
-      const res = await fetch("/api/checkins/submit", {
+      const res = await fetch("/api/checkins/submit-and-coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: task.id, answers }),
       });
+
+      if (res.status === 409) {
+        setBanner({ type: "success", text: "Already submitted ✅" });
+        setTimeout(() => {
+          router.push("/tasks");
+          router.refresh();
+        }, 800);
+        return;
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -210,9 +219,19 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
         return;
       }
 
-      setBanner({ type: "success", text: "Saved. Submission recorded." });
-      router.replace("/tasks");
-      router.refresh();
+      const data = await res.json();
+      const sessionId = data?.sessionId;
+
+      if (!sessionId) {
+        setBanner({ type: "error", text: "No session created" });
+        setSubmitting(false);
+        return;
+      }
+
+      setBanner({ type: "success", text: "Submitted ✅" });
+      setTimeout(() => {
+        router.push(`/workspace?sessionId=${sessionId}`);
+      }, 800);
     } catch {
       setBanner({ type: "error", text: "Failed to submit check-in" });
       setSubmitting(false);
