@@ -59,6 +59,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [input, setInput] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [mounted, setMounted] = useState(false);
 
@@ -235,11 +236,11 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         .order("scheduled_for", { ascending: true })
         .limit(20);
 
-      const mappedTasks = (taskRows ?? []).map((row: any) => ({
+      const mappedTasks = (taskRows ?? []).map((row: Record<string, unknown>) => ({
         id: row.id,
         scheduled_for: row.scheduled_for,
-        template_key: row.template?.template_key ?? row.period_key ?? null,
-        template_title: row.template?.title ?? null,
+        template_key: (row.template as Record<string, unknown> | undefined)?.template_key ?? row.period_key ?? null,
+        template_title: (row.template as Record<string, unknown> | undefined)?.title ?? null,
       }));
 
       setPendingTasks(mappedTasks);
@@ -303,6 +304,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
   async function loadHistory(sessionId: string) {
     setStatus("");
+    setHistoryLoading(true);
     try {
       const res = await fetch(`/api/chat/history?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) {
@@ -313,6 +315,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       setMessages(data.messages ?? []);
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -424,13 +428,14 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       typingIntervalRef.current = setTimeout(typeNextWord, TYPING_MS_PER_WORD);
 
       await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 2).toString(),
           role: "assistant",
-          content: `Connection error talking to AI. ${String(err?.message ?? err)}`,
+          content: `Connection error talking to AI. ${errorMessage}`,
         },
       ]);
     } finally {
@@ -566,9 +571,21 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
           {mobileMenuOpen ? SidebarContent : null}
 
           <section className="mx-auto w-full max-w-[420px] px-6">
-            {messages.length === 0 ? (
+            {messages.length === 0 && !historyLoading ? (
               <div className="flex h-[calc(100vh-160px)] items-center justify-center text-center">
                 <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Ready to help you improve.</h1>
+              </div>
+            ) : historyLoading ? (
+              <div className="h-[calc(100vh-220px)] overflow-y-auto pb-40 pt-6">
+                <div className="space-y-3">
+                  {[1, 2, 3].map((index) => (
+                    <div key={index} className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl bg-slate-200 px-4 py-3 animate-pulse">
+                        <div className="h-4 w-24 bg-slate-300 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="h-[calc(100vh-220px)] overflow-y-auto pb-40 pt-6">
