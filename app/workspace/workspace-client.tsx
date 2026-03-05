@@ -5,6 +5,9 @@ import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MENU_BUBBLE_BUTTON, MENU_EXPANDABLE_BUTTON } from "@/lib/menu-styles";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import AppMenu from "@/app/components/AppMenu";
 
 type Props = { user: User | null };
 
@@ -16,6 +19,7 @@ type Message = {
   isTyping?: boolean;
   fullText?: string;
   displayText?: string;
+  reply?: string;
 };
 
 type Session = {
@@ -64,8 +68,6 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
   const [sidebarOpenDesktop, setSidebarOpenDesktop] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [chatsOpen, setChatsOpen] = useState(true);
-  const [tasksOpen, setTasksOpen] = useState(false);
 
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
@@ -376,6 +378,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         fullText: assistantText,
         displayText: "",
         isTyping: true,
+        reply: data.reply,
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -477,122 +480,27 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     if (textarea) textarea.style.height = "auto";
   }
 
+  const handleNewChatClick = async () => {
+    forceNewChatRef.current = true;
+    setActiveSessionId(null);
+    setMessages([]);
+    try {
+      localStorage.removeItem("activeSessionId");
+    } catch {}
+    try {
+      await handleNewChat();
+      router.replace("/workspace");
+    } finally {
+      forceNewChatRef.current = false;
+    }
+  };
+
   const SidebarContent = (
     <aside className="fixed inset-0 z-50 flex h-full flex-col bg-white">
-      <div className="flex items-center justify-between border-b border-slate-900/10 px-8 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Menu</p>
-        <button
-          onClick={() => setMobileMenuOpen(false)}
-          className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-lg font-semibold text-[#d8cd72] hover:bg-slate-50"
-          aria-label="Close menu"
-        >
-          ✕
-        </button>
-      </div>
-
-      <nav className="flex-1 overflow-hidden px-6 py-4">
-        <div className="flex h-full flex-col gap-2">
-          <button
-            type="button"
-            onClick={async () => {
-              forceNewChatRef.current = true;
-              setActiveSessionId(null);
-              setMessages([]);
-              try {
-                localStorage.removeItem("activeSessionId");
-              } catch {}
-              try {
-                await handleNewChat();
-                setMobileMenuOpen(false);
-                router.replace("/workspace");
-              } finally {
-                forceNewChatRef.current = false;
-              }
-            }}
-            className={MENU_BUBBLE_BUTTON}
-          >
-            New chat
-          </button>
-
-          <div className={cx("bg-white", chatsOpen && "flex min-h-0 flex-1 flex-col")}>
-            <button
-              type="button"
-              onClick={() => setChatsOpen((prev) => !prev)}
-              className={MENU_EXPANDABLE_BUTTON}
-              aria-expanded={chatsOpen}
-            >
-              <span>Your chats</span>
-              <span className="text-base leading-none text-slate-500">{chatsOpen ? "▾" : "▸"}</span>
-            </button>
-            {chatsOpen ? (
-              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
-                {sessionsLoading ? (
-                  <p className="text-sm text-slate-500">Loading chats...</p>
-                ) : sessions.length > 0 ? (
-                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
-                    <div className="space-y-2">
-                      {sessions.map((session) => (
-                        <button
-                          key={session.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveSessionId(session.id);
-                            void loadHistory(session.id);
-                            setMobileMenuOpen(false);
-                          }}
-                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
-                        >
-                          {session.title || "Untitled chat"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No chats yet</p>
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          <div className={cx("bg-white", tasksOpen && "flex min-h-0 flex-1 flex-col")}>
-            <button
-              type="button"
-              onClick={() => setTasksOpen((prev) => !prev)}
-              className={MENU_EXPANDABLE_BUTTON}
-              aria-expanded={tasksOpen}
-            >
-              <span>Your tasks</span>
-              <span className="text-base leading-none text-slate-500">{tasksOpen ? "▾" : "▸"}</span>
-            </button>
-            {tasksOpen ? (
-              <div className="flex min-h-0 flex-1 flex-col border-t border-slate-900/10 px-4 py-3">
-                {pendingTasks.length > 0 ? (
-                  <div className="mt-3 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
-                    <div className="space-y-2">
-                      {pendingTasks.map((task) => (
-                        <button
-                          key={task.id}
-                          type="button"
-                          onClick={() => {
-                            router.push(`/checkins/task/${task.id}`);
-                            setMobileMenuOpen(false);
-                          }}
-                          className="w-full rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100"
-                        >
-                          <p className="truncate font-semibold text-slate-900">{task.template_title || task.template_key || "Check-in"}</p>
-                          <p className="mt-1 text-xs text-slate-500">Due {new Date(task.scheduled_for).toLocaleString()}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">No pending tasks</p>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </nav>
+      <AppMenu
+        onClose={() => setMobileMenuOpen(false)}
+        onNewChat={handleNewChatClick}
+      />
 
       <div className="sticky bottom-0 mt-auto border-t border-slate-900/10 bg-white px-4 py-4">
         <button
@@ -676,7 +584,28 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                           item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
                         )}
                       >
-                        {item.role === "assistant" && item.isTyping ? item.displayText ?? "" : item.content}
+                        {item.role === "assistant" && item.isTyping ? (
+                          item.displayText ?? ""
+                        ) : item.role === "assistant" ? (
+                          <div
+                            className="
+                              prose prose-sm max-w-none text-slate-900 leading-relaxed
+                              prose-headings:mt-4 prose-headings:mb-2
+                              prose-p:my-2
+                              prose-ul:my-2 prose-ul:pl-5 prose-ul:list-disc
+                              prose-ol:my-2 prose-ol:pl-5 prose-ol:list-decimal
+                              prose-li:my-1
+                              prose-strong:font-semibold
+                              prose-headings:text-slate-900
+                            "
+                          >
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {String(item.reply ?? item.content ?? "")}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          item.content
+                        )}
                       </div>
                     </div>
                   ))}
