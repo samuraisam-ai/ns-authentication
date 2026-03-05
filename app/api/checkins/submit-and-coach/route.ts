@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server-client";
+import { logChatEvent, newRequestId } from "@/lib/chat-events";
 
 /**
  * Manual Acceptance Tests:
@@ -100,6 +101,59 @@ function buildCheckinSummary(
   return summary.trim();
 }
 
+function flattenAnswers(obj: unknown, prefix = ""): Array<[string, string]> {
+  if (!obj || typeof obj !== "object") return [];
+
+  const out: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+
+    if (v === null || v === undefined) continue;
+
+    if (typeof v === "object" && !Array.isArray(v)) {
+      out.push(...flattenAnswers(v, key));
+      continue;
+    }
+
+    if (Array.isArray(v)) {
+      out.push([key, v.map(String).join(", ")]);
+      continue;
+    }
+
+    out.push([key, String(v)]);
+  }
+
+  return out;
+}
+
+function buildAnswersMessage(args: {
+  templateKey: string;
+  scheduledForISO?: string | null;
+  answers: Record<string, unknown>;
+}) {
+  const { templateKey, scheduledForISO, answers } = args;
+
+  const scheduledFor = scheduledForISO
+    ? new Date(scheduledForISO).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  const lines: string[] = [];
+  lines.push(`Check-in submission`);
+  lines.push(`Template: ${templateKey}`);
+  lines.push(`Scheduled for: ${scheduledFor}`);
+  lines.push("");
+  lines.push("Answers:");
+
+  const flat = flattenAnswers(answers);
+  if (flat.length === 0) {
+    lines.push("- (no answers found)");
+  } else {
+    for (const [k, v] of flat) lines.push(`- ${k}: ${v}`);
+  }
+
+  return lines.join("\n");
+}
+
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -118,40 +172,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing taskId" }, { status: 400 });
   }
 
-  // Fetch the task and validate ownership
-  const { data: task, error: taskError } = await supabase
-    .from("checkin_tasks")
-    .select("*")
-    .eq("id", taskId)
-    .eq("user_id", user.id)
-    .single();
-
-  if (taskError || !task) {
-    if (taskError) {
-      console.error("[checkins-submit-and-coach] Failed to fetch task:", {
-        message: taskError.message,
-        code: taskError.code,
-      });
-    }
-    return NextResponse.json(
-      { error: "Task not found or unauthorized" },
-      { status: 404 }
-    );
-  }
-
-  // Check if already submitted
-  if (task.status === "submitted") {
-    return NextResponse.json(
-      { error: "Already submitted" },
-      { status: 409 }
-    );
-  }
-
   // Extract answers from body
   const answers = body?.answers as Record<string, unknown> | undefined;
   if (!answers) {
     return NextResponse.json({ error: "Missing answers" }, { status: 400 });
   }
+
+  // Atomic idempotency guard: lock task by moving pending -> submitted in one statement
+  const submittedAt = new Date().toISOString();
+  const { data: updatedTask, error: updErr } = await supabase
+    .from("checkin_tasks")
+    .update({ status: "submitted", submitted_at: submittedAt })
+    .eq("id", taskId)
+    .eq("user_id", user.id)
+    .eq("status", "pending")
+    .select("*")
+    .single();
+
+  if (updErr || !updatedTask) {
+    return NextResponse.json({ error: "Already submitted" }, { status: 409 });
+  }
+
+  const task = updatedTask;
 
   // ==================== SUBMISSION LOGIC ====================
   // Insert into checkin_submissions
@@ -167,16 +209,6 @@ export async function POST(req: Request) {
 
   if (insertError) {
     if (insertError.code === "23505") {
-      // Duplicate submission - ensure task is marked submitted
-      await supabase
-        .from("checkin_tasks")
-        .update({
-          status: "submitted",
-          submitted_at: new Date().toISOString(),
-        })
-        .eq("id", taskId)
-        .eq("user_id", user.id);
-
       return NextResponse.json(
         { error: "Already submitted" },
         { status: 409 }
@@ -189,27 +221,6 @@ export async function POST(req: Request) {
     });
     return NextResponse.json(
       { error: "Failed to insert submission" },
-      { status: 500 }
-    );
-  }
-
-  // Update checkin_tasks status
-  const { error: updateError } = await supabase
-    .from("checkin_tasks")
-    .update({
-      status: "submitted",
-      submitted_at: new Date().toISOString(),
-    })
-    .eq("id", taskId)
-    .eq("user_id", user.id);
-
-  if (updateError) {
-    console.error("[checkins-submit-and-coach] Failed to update task status:", {
-      message: updateError.message,
-      code: updateError.code,
-    });
-    return NextResponse.json(
-      { error: "Failed to update task status" },
       { status: 500 }
     );
   }
@@ -297,19 +308,62 @@ export async function POST(req: Request) {
   const webhookUrl =
     "https://n8n.srv1232006.hstgr.cloud/webhook/2b529379-023f-4969-9367-4ab5d6593b02";
 
+  const templateKey = task.template_key ?? "unknown";
+  const requestId = newRequestId();
+  const createdAt = new Date().toISOString();
+
+  const combinedMessage = buildAnswersMessage({
+    templateKey,
+    scheduledForISO: task.scheduled_for,
+    answers,
+  });
+
   const webhookPayload = {
     source: "checkin_submit",
+    // IDs / routing
     userId: user.id,
     taskId: taskId,
-    templateKey: task.template_key ?? "unknown",
+    templateKey: templateKey,
     scheduledFor: task.scheduled_for,
     sessionId: sessionId,
     userMessageId: userMessageId,
     answers: answers,
+    // snake_case aliases (for n8n)
+    user_id: user.id,
+    task_id: taskId,
+    template_key: templateKey,
+    scheduled_for: task.scheduled_for,
+    session_id: sessionId,
+    user_message_id: userMessageId,
+    // chat_events required fields
+    direction: "send",
+    message: combinedMessage,
+    request_id: requestId,
+    route: "checkins/submit-and-coach",
+    created_at: createdAt,
   };
 
-  let assistantReply =
-    "I received your check-in, but coaching is temporarily unavailable. Try again in a minute.";
+  // Defensive assertion: ensure direction is "send" before calling n8n
+  if (webhookPayload.direction !== "send") {
+    console.error(
+      "[checkins-submit-and-coach] Invalid direction for n8n webhook:",
+      webhookPayload.direction
+    );
+    return NextResponse.json(
+      { error: "Invalid payload direction" },
+      { status: 500 }
+    );
+  }
+
+  await logChatEvent({
+    userId: user.id,
+    direction: "send",
+    message: `checkin_submit -> n8n (task_id=${taskId}, session_id=${sessionId})`,
+    requestId,
+    route: "checkins/submit-and-coach",
+  });
+
+  let webhookJson: Record<string, unknown> | null = null;
 
   try {
     const controller = new AbortController();
@@ -317,7 +371,7 @@ export async function POST(req: Request) {
 
     const webhookResponse = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(webhookPayload),
       signal: controller.signal,
     });
@@ -325,14 +379,11 @@ export async function POST(req: Request) {
     clearTimeout(timeoutId);
 
     if (webhookResponse.ok) {
-      const responseData = (await webhookResponse
+      webhookJson = (await webhookResponse
         .json()
         .catch(() => ({}))) as Record<string, unknown>;
-      const reply = responseData?.reply;
 
-      if (typeof reply === "string" && reply.trim()) {
-        assistantReply = reply.trim();
-      } else {
+      if (!(typeof webhookJson?.reply === "string" && webhookJson.reply.trim().length > 0)) {
         console.warn("[checkins-submit-and-coach] n8n response missing reply field");
       }
     } else {
@@ -352,25 +403,34 @@ export async function POST(req: Request) {
     }
   }
 
+  const coachingReply =
+    typeof webhookJson?.reply === "string" && webhookJson.reply.trim().length > 0
+      ? webhookJson.reply.trim()
+      : "I received your check-in, but coaching is temporarily unavailable. Try again in a minute.";
+
   // ==================== INSERT SECOND ASSISTANT MESSAGE (WITH REPLY) ====================
-  const { error: assistantMessageError } = await supabase
+  const { data: assistantMsg, error: assistantErr } = await supabase
     .from("chat_messages")
     .insert({
       session_id: sessionId,
       user_id: user.id,
       role: "assistant",
-      content: assistantReply,
-    });
+      content: coachingReply,
+    })
+    .select("id")
+    .single();
 
-  if (assistantMessageError) {
-    console.error("[checkins-submit-and-coach] Failed to insert assistant message:", {
-      message: assistantMessageError.message,
-    });
-    return NextResponse.json(
-      { error: "Failed to store assistant message" },
-      { status: 500 }
-    );
+  if (assistantErr) {
+    console.error("[checkins-submit-and-coach] failed to insert assistant message", assistantErr);
   }
+
+  await logChatEvent({
+    userId: user.id,
+    direction: "receive",
+    message: `n8n reply received (len=${coachingReply.length})`,
+    requestId,
+    route: "checkins/submit-and-coach",
+  });
 
   return NextResponse.json({ sessionId });
 }
