@@ -11,9 +11,14 @@ interface TaskWithTemplate {
   status: string;
   submitted_at: string | null;
   created_at: string;
-  template?: {
-    title: string;
-  } | null;
+  template?:
+    | {
+        title: string;
+      }
+    | {
+        title: string;
+      }[]
+    | null;
 }
 
 function getString(value: unknown, fallback = ""): string {
@@ -77,6 +82,21 @@ function buildRawAnswersMessage(args: {
   lines.push("```");
   
   return lines.join("\n");
+}
+
+function getTemplateTitle(task: TaskWithTemplate): string {
+  const templateValue = task.template;
+  if (!templateValue) return "Check-in";
+
+  if (Array.isArray(templateValue)) {
+    return typeof templateValue[0]?.title === "string" && templateValue[0].title.trim().length > 0
+      ? templateValue[0].title
+      : "Check-in";
+  }
+
+  return typeof templateValue.title === "string" && templateValue.title.trim().length > 0
+    ? templateValue.title
+    : "Check-in";
 }
 
 export async function POST(req: Request) {
@@ -175,6 +195,7 @@ export async function POST(req: Request) {
           alreadySubmitted: true,
           submissionId: existingSubmission.id,
           coachingSessionId: existingSubmission.coaching_session_id,
+          coachingTriggered: false,
           message: "Check-in already submitted",
         });
       }
@@ -183,7 +204,7 @@ export async function POST(req: Request) {
       console.log("[checkins/submit] Legacy submission without coaching, creating now", { taskId, submissionId: existingSubmission.id });
       const coachingResult = await createCoachingSession(supabase, user.id, existingSubmission.id, taskId, task, answers as Record<string, unknown>);
       
-      if (coachingResult.ok && coachingResult.sessionId) {
+      if (coachingResult.sessionId) {
         // Update submission with coaching_session_id
         await supabase
           .from("checkin_submissions")
@@ -199,7 +220,7 @@ export async function POST(req: Request) {
         alreadySubmitted: true,
         submissionId: existingSubmission.id,
         coachingSessionId: coachingResult.sessionId || undefined,
-        coachingError: !coachingResult.ok,
+        coachingTriggered: coachingResult.coachingTriggered,
         message: "Check-in already submitted",
       });
     }
@@ -208,6 +229,8 @@ export async function POST(req: Request) {
       ok: true,
       alreadySubmitted: true,
       submissionId: null,
+      coachingSessionId: undefined,
+      coachingTriggered: false,
       message: "Check-in already submitted",
     });
   }
@@ -261,6 +284,8 @@ export async function POST(req: Request) {
         ok: true,
         alreadySubmitted: true,
         submissionId: null,
+        coachingSessionId: undefined,
+        coachingTriggered: false,
         message: "Check-in already submitted",
       });
     }
@@ -328,21 +353,18 @@ export async function POST(req: Request) {
 
   /**
    * POST-SUBMIT COACHING FLOW:
-   * 
+   *
    * 1. Create a chat session named "<Template Title> — YYYY-MM-DD — HH:mm" (Africa/Johannesburg TZ)
    * 2. Insert seed message with raw submission answers (title, submission_id, task_id, timestamp, JSON)
-   * 3. Call n8n webhook to generate coaching reply (or use fallback if webhook fails)
-   * 4. Insert assistant reply message into chat
-   * 5. Update checkin_submissions with coaching_session_id and coaching_created_at
-   * 6. Return coachingSessionId to client for redirect to /workspace?sessionId=...
-   * 
-   * If n8n fails: chat still gets created with seed message + fallback reply, coachingError=true
+   * 3. Trigger n8n asynchronously (no synchronous assistant reply handling here)
+   * 4. Update checkin_submissions with coaching_session_id and coaching_created_at
+   * 5. Return success immediately after DB writes
    */
   // Post-submit coaching flow
   console.log("[checkins/submit] Starting coaching session creation", { taskId, submissionId });
   const coachingResult = await createCoachingSession(supabase, user.id, submissionId, taskId, task, answers as Record<string, unknown>);
 
-  if (coachingResult.ok && coachingResult.sessionId) {
+  if (coachingResult.sessionId) {
     // Update submission with coaching_session_id
     const { error: updateCoachingError } = await supabase
       .from("checkin_submissions")
@@ -366,7 +388,7 @@ export async function POST(req: Request) {
     ok: true, 
     submissionId,
     coachingSessionId: coachingResult.sessionId || undefined,
-    coachingError: !coachingResult.ok,
+    coachingTriggered: coachingResult.coachingTriggered,
     message: "Check-in submitted successfully" 
   });
 }
@@ -380,10 +402,10 @@ async function createCoachingSession(
   taskId: string,
   task: TaskWithTemplate,
   answers: Record<string, unknown>
-): Promise<{ ok: boolean; sessionId?: string }> {
+): Promise<{ ok: boolean; sessionId?: string; coachingTriggered: boolean }> {
   try {
     // Get template title
-    const templateTitle = task.template?.title || "Check-in";
+    const templateTitle = getTemplateTitle(task);
     
     // Format session title with timezone
     const sessionTitle = `${templateTitle} — ${formatDateTimeWithTimezone(task.scheduled_for, "Africa/Johannesburg")}`;
@@ -401,7 +423,7 @@ async function createCoachingSession(
       console.error("[checkins/submit] Failed to create chat session:", {
         message: sessionError?.message ?? "unknown_error",
       });
-      return { ok: false };
+      return { ok: false, coachingTriggered: false };
     }
 
     const sessionId = session.id;
@@ -430,95 +452,69 @@ async function createCoachingSession(
       console.error("[checkins/submit] Failed to insert user message:", {
         message: userMessageError.message,
       });
-      return { ok: false, sessionId };
+      return { ok: false, sessionId, coachingTriggered: false };
     }
 
     console.log("[checkins/submit] User message inserted", { sessionId });
 
-    // Call n8n coaching flow
-    const webhookUrl = process.env.N8N_WEBHOOK_URL;
+    // Trigger n8n coaching flow (async trigger only)
+    const webhookUrl = process.env.N8N_COACHING_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL;
+    let coachingTriggered = false;
+
     if (!webhookUrl) {
-      console.error("[checkins/submit] Missing N8N_WEBHOOK_URL");
-      return { ok: false, sessionId };
-    }
-
-    let assistantReply = "I received your check-in. Coaching is temporarily unavailable, but you can continue the conversation here.";
-    let n8nError = false;
-
-    try {
+      console.error("[checkins/submit] Missing N8N_COACHING_WEBHOOK_URL and N8N_WEBHOOK_URL");
+    } else {
       const webhookPayload = {
-        id: crypto.randomUUID(),
-        user_id: userId,
-        direction: "send",
-        message: userMessageContent,
-        request_id: crypto.randomUUID(),
-        route: "/api/checkins/submit",
-        created_at: new Date().toISOString(),
-        chat_events: { body: { message: userMessageContent, sessionId } },
-        identity: { id: userId },
+        source: "checkin_submit",
         sessionId,
-        submission_id: submissionId,
-        task_id: taskId,
-        template_title: templateTitle,
+        submissionId,
+        taskId,
+        userId,
+        templateTitle,
+        message: userMessageContent,
       };
 
-      console.log("[checkins/submit] Calling n8n webhook", { sessionId });
+      const safeWebhookUrl = (() => {
+        try {
+          const parsed = new URL(webhookUrl);
+          return `${parsed.hostname}${parsed.pathname}`;
+        } catch {
+          return "invalid_url";
+        }
+      })();
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      console.log("[submit][n8n] request", { sessionId, webhook: safeWebhookUrl });
+      coachingTriggered = true;
 
-      const webhookResponse = await fetch(webhookUrl, {
+      void fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(webhookPayload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (webhookResponse.ok) {
-        const webhookJson = (await webhookResponse.json().catch(() => ({}))) as Record<string, unknown>;
-        if (typeof webhookJson?.reply === "string" && webhookJson.reply.trim().length > 0) {
-          assistantReply = webhookJson.reply.trim();
-        }
-      } else {
-        console.error("[checkins/submit] n8n webhook failed:", {
-          status: webhookResponse.status,
-          statusText: webhookResponse.statusText,
+      })
+        .then((webhookResponse) => {
+          if (!webhookResponse.ok) {
+            console.error("[checkins/submit] n8n webhook failed:", {
+              status: webhookResponse.status,
+              statusText: webhookResponse.statusText,
+              sessionId,
+              submissionId,
+              taskId,
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          console.error(
+            "[checkins/submit] n8n trigger error:",
+            error instanceof Error ? error.message : String(error)
+          );
         });
-        n8nError = true;
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.error("[checkins/submit] n8n webhook timeout");
-      } else {
-        console.error("[checkins/submit] n8n webhook error:", error instanceof Error ? error.message : String(error));
-      }
-      n8nError = true;
     }
 
-    // Insert assistant reply message
-    const { error: assistantError } = await supabase
-      .from("chat_messages")
-      .insert({
-        session_id: sessionId,
-        user_id: userId,
-        role: "assistant",
-        content: assistantReply,
-      });
-
-    if (assistantError) {
-      console.error("[checkins/submit] Failed to insert assistant message:", {
-        message: assistantError.message,
-      });
-      return { ok: false, sessionId };
-    }
-
-    console.log("[checkins/submit] Coaching session completed", { sessionId, n8nError });
-    return { ok: true, sessionId };
+    console.log("[checkins/submit] Coaching session seeded", { sessionId, coachingTriggered });
+    return { ok: true, sessionId, coachingTriggered };
   } catch (error) {
     console.error("[checkins/submit] Unexpected error in createCoachingSession:", error instanceof Error ? error.message : String(error));
-    return { ok: false };
+    return { ok: false, coachingTriggered: false };
   }
 }
 
@@ -534,11 +530,11 @@ async function createCoachingSession(
  * ✓ Legacy submitted task (existing row without coaching_session_id): calling submit again creates
  *   coaching session now and backlogs it to the submission row
  * 
- * ✓ N8n webhook timeout/failure: chat session still created with seed message + fallback assistant reply,
- *   response includes coachingError: true for client to show "Coach reply failed" message
+ * ✓ N8n trigger timeout/failure: chat session still created with seed message,
+ *   response includes coachingTriggered: false while submit still succeeds
  * 
  * ✓ Workspace loads history immediately when URL has ?sessionId=<uuid> (loading skeleton visible on slow connection)
  * 
- * ✓ Chat messages are properly formatted: user message shows submission metadata + raw JSON answers,
- *   assistant message shows coaching reply (or fallback)
+ * ✓ Chat messages are properly formatted: user seed message shows submission metadata + raw JSON answers,
+ *   assistant reply is handled by callback route
  */
