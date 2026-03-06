@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server-client";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin-client";
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
 export async function POST(req: Request) {
-  const supabase = await createSupabaseServerClient();
+  // Server-to-server callback from n8n, protected by COACHING_CALLBACK_SECRET.
+  // Uses service-role client to bypass RLS since this is a backend-only write with secret validation.
+  const supabase = createSupabaseAdminClient();
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
   const secret = getString(body?.secret);
