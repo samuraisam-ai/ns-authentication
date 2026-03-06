@@ -210,9 +210,17 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
         return;
       }
 
-      setBanner({ type: "success", text: "Saved. Submission recorded." });
-      router.replace("/tasks");
-      router.refresh();
+      const data = (await res.json()) as { coachingSessionId?: string; ok?: boolean };
+      
+      // If coaching session was created, redirect to workspace with the session
+      if (data.coachingSessionId) {
+        router.push(`/workspace?sessionId=${encodeURIComponent(data.coachingSessionId)}`);
+      } else {
+        // Fallback if for some reason there's no coaching session
+        setBanner({ type: "success", text: "Saved. Submission recorded." });
+        router.replace("/tasks");
+        router.refresh();
+      }
     } catch {
       setBanner({ type: "error", text: "Failed to submit check-in" });
       setSubmitting(false);
@@ -407,9 +415,10 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                     <button
                       type="submit"
                       form="daily-checkin-form"
-                      className="w-full rounded-2xl bg-[#d8cd72] py-3 text-sm font-bold text-white"
+                      disabled={submitting}
+                      className="w-full rounded-2xl bg-[#d8cd72] py-3 text-sm font-bold text-white disabled:opacity-60"
                     >
-                      {isDailyCheckout ? "Submit Check-out" : "Submit Check-in"}
+                      {submitting ? "Generating coaching…" : (isDailyCheckout ? "Submit Check-out" : "Submit Check-in")}
                     </button>
                   </div>
                 </div>
@@ -872,7 +881,7 @@ function FormRenderer({
           disabled={submitting}
           className="mt-6 w-full rounded-2xl bg-[#2f343a] py-3 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
         >
-          {submitting ? "Submitting…" : "Submit Check-out"}
+          {submitting ? "Generating coaching…" : "Submit Check-out"}
         </button>
       </form>
     );
