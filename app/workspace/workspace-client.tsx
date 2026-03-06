@@ -186,6 +186,42 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!currentUser?.id || !activeSessionId) return;
+
+    let isActive = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let initialAssistantCount = 0;
+
+    const startPollingForAsyncReply = async () => {
+      const initialMessages = await loadHistory(activeSessionId, { silent: true });
+      if (!isActive || !initialMessages) return;
+
+      const initialUserCount = initialMessages.filter((item) => item.role === "user").length;
+      initialAssistantCount = initialMessages.filter((item) => item.role === "assistant").length;
+
+      if (initialUserCount < 1 || initialAssistantCount > 0) return;
+
+      intervalId = setInterval(async () => {
+        const latestMessages = await loadHistory(activeSessionId, { silent: true });
+        if (!isActive || !latestMessages) return;
+
+        const assistantCount = latestMessages.filter((item) => item.role === "assistant").length;
+        if (assistantCount > initialAssistantCount && intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }, 2500);
+    };
+
+    void startPollingForAsyncReply();
+
+    return () => {
+      isActive = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeSessionId, currentUser?.id]);
+
   async function fetchPendingTaskCount() {
     if (!currentUser?.id) {
       setPendingTaskCount(0);
@@ -319,9 +355,12 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     }
   }
 
-  async function loadHistory(sessionId: string) {
-    setStatus("");
-    setHistoryLoading(true);
+  async function loadHistory(sessionId: string, options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setStatus("");
+      setHistoryLoading(true);
+    }
+
     try {
       const res = await fetch(`/api/chat/history?sessionId=${encodeURIComponent(sessionId)}`);
       if (!res.ok) {
@@ -329,11 +368,18 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         throw new Error(`Failed to load history (${res.status}): ${errText}`);
       }
       const data = (await res.json()) as { messages?: Message[] };
-      setMessages(data.messages ?? []);
+      const historyMessages = data.messages ?? [];
+      setMessages(historyMessages);
+      return historyMessages;
     } catch (error) {
-      setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      if (!options?.silent) {
+        setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return null;
     } finally {
-      setHistoryLoading(false);
+      if (!options?.silent) {
+        setHistoryLoading(false);
+      }
     }
   }
 
