@@ -236,12 +236,29 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         .order("scheduled_for", { ascending: true })
         .limit(20);
 
-      const mappedTasks = (taskRows ?? []).map((row: Record<string, unknown>) => ({
-        id: row.id,
-        scheduled_for: row.scheduled_for,
-        template_key: (row.template as Record<string, unknown> | undefined)?.template_key ?? row.period_key ?? null,
-        template_title: (row.template as Record<string, unknown> | undefined)?.title ?? null,
-      }));
+      const mappedTasks: PendingTask[] = (taskRows ?? []).map((row: Record<string, unknown>) => {
+        const template =
+          row.template && typeof row.template === "object"
+            ? (row.template as Record<string, unknown>)
+            : undefined;
+
+        const id = typeof row.id === "string" ? row.id : "";
+        const scheduled_for = typeof row.scheduled_for === "string" ? row.scheduled_for : "";
+        const template_key =
+          typeof template?.template_key === "string"
+            ? template.template_key
+            : typeof row.period_key === "string"
+              ? row.period_key
+              : null;
+        const template_title = typeof template?.title === "string" ? template.title : null;
+
+        return {
+          id,
+          scheduled_for,
+          template_key,
+          template_title,
+        };
+      });
 
       setPendingTasks(mappedTasks);
     } catch {
