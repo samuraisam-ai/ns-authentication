@@ -23,10 +23,10 @@ Set these in `.env.local` to restrict access. If unset, all authenticated users 
 ```bash
 ALLOWED_EMAILS="a@b.com,c@d.com"
 ALLOWED_DOMAINS="networkspace.co.za,example.com"
-N8N_WEBHOOK_URL="https://n8n.srv1232006.hstgr.cloud/webhook/12c8e872-c1e9-429f-b89d-bb377e30db22"
+N8N_WEBHOOK_URL=""https://your-n8n-host/webhook/your-webhook-id""
 # Optional override for post-submit coaching.
-N8N_COACHING_WEBHOOK_URL="https://<n8n-host>/webhook/<coaching-id>"
-N8N_WEBHOOK_SECRET="7e03931ecca19cca35056796812178bc9624712896145cabfa7dafde5cbf2d49"
+N8N_COACHING_WEBHOOK_URL="https://your-n8n-host/webhook/your-coaching-webhook-id"
+N8N_WEBHOOK_SECRET="your-secret-here"
 N8N_LOG_WEBHOOK_URL="https://<n8n-host>/webhook/<log-id>"
 N8N_WEBHOOK_SECRET="same secret as before"
 ```
