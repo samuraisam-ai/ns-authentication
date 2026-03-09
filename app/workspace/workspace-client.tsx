@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -39,6 +39,29 @@ function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
+function isCoachingSeedMessage(content: string): boolean {
+  return content.startsWith("# Submission:") && content.includes("**Submission ID:**");
+}
+
+function isSameMessageHistory(current: Message[], incoming: Message[]): boolean {
+  if (current.length !== incoming.length) return false;
+
+  for (let index = 0; index < incoming.length; index += 1) {
+    if (current[index]?.id !== incoming[index]?.id) return false;
+  }
+
+  if (incoming.length === 0) return true;
+
+  const currentLast = current[current.length - 1];
+  const incomingLast = incoming[incoming.length - 1];
+
+  return (
+    currentLast?.content === incomingLast?.content &&
+    currentLast?.reply === incomingLast?.reply &&
+    currentLast?.displayText === incomingLast?.displayText
+  );
+}
+
 function Badge({ value }: { value: number }) {
   return (
     <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#c7c85a] px-1.5 text-[11px] font-semibold text-[#0f172a]">
@@ -46,6 +69,28 @@ function Badge({ value }: { value: number }) {
     </span>
   );
 }
+
+type AssistantMessageBubbleProps = {
+  content: string;
+  isTyping?: boolean;
+};
+
+const AssistantMessageBubble = memo(function AssistantMessageBubble({
+  content,
+  isTyping = false,
+}: AssistantMessageBubbleProps) {
+  if (isTyping) return <>{content}</>;
+
+  return (
+    <div
+      className="text-sm leading-6 text-slate-900 [&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-2 [&_h2]:text-[15px] [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold"
+    >
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  );
+});
+
+AssistantMessageBubble.displayName = "AssistantMessageBubble";
 
 export default function WorkspaceClient({ user: initialUser }: Props) {
   const router = useRouter();
@@ -189,38 +234,69 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   useEffect(() => {
     if (!currentUser?.id || !activeSessionId) return;
 
+    const sessionMatchesUrl = Boolean(sessionIdParam) && activeSessionId === sessionIdParam;
+    if (!sessionMatchesUrl || newChatParam) return;
+
+    const assistantCount = messages.filter((item) => item.role === "assistant").length;
+    const seedMessage = messages[0];
+    const shouldPollFreshCoachingSeed =
+      messages.length === 1 &&
+      seedMessage?.role === "user" &&
+      isCoachingSeedMessage(seedMessage.content) &&
+      assistantCount === 0;
+
+    if (!shouldPollFreshCoachingSeed) return;
+
     let isActive = true;
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    let initialAssistantCount = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const startPollingForAsyncReply = async () => {
-      const initialMessages = await loadHistory(activeSessionId, { silent: true });
-      if (!isActive || !initialMessages) return;
-
-      const initialUserCount = initialMessages.filter((item) => item.role === "user").length;
-      initialAssistantCount = initialMessages.filter((item) => item.role === "assistant").length;
-
-      if (initialUserCount < 1 || initialAssistantCount > 0) return;
-
-      intervalId = setInterval(async () => {
-        const latestMessages = await loadHistory(activeSessionId, { silent: true });
-        if (!isActive || !latestMessages) return;
-
-        const assistantCount = latestMessages.filter((item) => item.role === "assistant").length;
-        if (assistantCount > initialAssistantCount && intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
-      }, 2500);
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
     };
 
-    void startPollingForAsyncReply();
+    const pollSessionHistory = async () => {
+      try {
+        // Intentionally limited to one fresh coaching submission session only.
+        const res = await fetch(`/api/chat/history?sessionId=${encodeURIComponent(activeSessionId)}`);
+        if (!res.ok || !isActive) return;
+
+        const data = (await res.json()) as { messages?: Message[] };
+        const latestMessages = data.messages ?? [];
+        const hasAssistantReply = latestMessages.some((item) => item.role === "assistant");
+
+        if (hasAssistantReply) {
+          setMessages((prev) => (isSameMessageHistory(prev, latestMessages) ? prev : latestMessages));
+          stopPolling();
+          return;
+        }
+
+        if (latestMessages.length !== 1) {
+          stopPolling();
+        }
+      } catch {}
+    };
+
+    intervalId = setInterval(() => {
+      void pollSessionHistory();
+    }, 2500);
+
+    timeoutId = setTimeout(() => {
+      stopPolling();
+    }, 20000);
 
     return () => {
       isActive = false;
-      if (intervalId) clearInterval(intervalId);
+      stopPolling();
     };
-  }, [activeSessionId, currentUser?.id]);
+  }, [activeSessionId, currentUser?.id, messages, newChatParam, sessionIdParam]);
 
   async function fetchPendingTaskCount() {
     if (!currentUser?.id) {
@@ -369,7 +445,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       }
       const data = (await res.json()) as { messages?: Message[] };
       const historyMessages = data.messages ?? [];
-      setMessages(historyMessages);
+      setMessages((prev) => (isSameMessageHistory(prev, historyMessages) ? prev : historyMessages));
       return historyMessages;
     } catch (error) {
       if (!options?.silent) {
@@ -664,25 +740,15 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                           item.role === "user" ? "bg-[#d8cd72] text-slate-900" : "bg-white text-slate-800"
                         )}
                       >
-                        {item.role === "assistant" && item.isTyping ? (
-                          item.displayText ?? ""
-                        ) : item.role === "assistant" ? (
-                          <div
-                            className="
-                              prose prose-sm max-w-none text-slate-900 leading-relaxed
-                              prose-headings:mt-4 prose-headings:mb-2
-                              prose-p:my-2
-                              prose-ul:my-2 prose-ul:pl-5 prose-ul:list-disc
-                              prose-ol:my-2 prose-ol:pl-5 prose-ol:list-decimal
-                              prose-li:my-1
-                              prose-strong:font-semibold
-                              prose-headings:text-slate-900
-                            "
-                          >
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {String(item.reply ?? item.content ?? "")}
-                            </ReactMarkdown>
-                          </div>
+                        {item.role === "assistant" ? (
+                          <AssistantMessageBubble
+                            content={
+                              item.isTyping
+                                ? (item.displayText ?? "")
+                                : String(item.reply ?? item.content ?? "")
+                            }
+                            isTyping={Boolean(item.isTyping)}
+                          />
                         ) : (
                           item.content
                         )}

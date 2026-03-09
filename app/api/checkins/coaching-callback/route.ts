@@ -5,6 +5,42 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getNormalizedReply(value: unknown): string {
+  const extractReply = (input: unknown, depth = 0): string => {
+    if (depth > 4 || input === null || input === undefined) return "";
+
+    if (typeof input === "string") {
+      const text = input.trim();
+      if (!text) return "";
+
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        if (parsed && typeof parsed === "object") {
+          const nested = extractReply(parsed, depth + 1);
+          if (nested) return nested;
+        }
+      } catch {}
+
+      return text;
+    }
+
+    if (typeof input === "object") {
+      const record = input as Record<string, unknown>;
+      const directReply = record.reply;
+      if (typeof directReply === "string") return directReply.trim();
+
+      for (const nestedValue of Object.values(record)) {
+        const nested = extractReply(nestedValue, depth + 1);
+        if (nested) return nested;
+      }
+    }
+
+    return "";
+  };
+
+  return extractReply(value).trim();
+}
+
 export async function POST(req: Request) {
   // Server-to-server callback from n8n, protected by COACHING_CALLBACK_SECRET.
   // Uses service-role client to bypass RLS since this is a backend-only write with secret validation.
@@ -15,7 +51,7 @@ export async function POST(req: Request) {
   const sessionId = getString(body?.sessionId);
   const submissionId = getString(body?.submissionId);
   const userId = getString(body?.userId);
-  const reply = getString(body?.reply);
+  const reply = getNormalizedReply(body?.reply);
   const source = getString(body?.source);
 
   const expectedSecret = process.env.COACHING_CALLBACK_SECRET;
@@ -74,6 +110,7 @@ export async function POST(req: Request) {
     session_id: sessionId,
     user_id: userId,
     role: "assistant",
+    // Normalize callback payloads before storage so chat content is always plain markdown text.
     content: reply,
   });
 
