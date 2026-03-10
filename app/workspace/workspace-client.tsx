@@ -139,8 +139,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const forceNewChatRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (!newChatParam && !forceNewChatRef.current) return;
@@ -270,6 +275,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
     if (!shouldPollFreshCoachingSeed) return;
 
+    setShowThinkingBubble(true);
+
     let isActive = true;
     let intervalId: ReturnType<typeof setInterval> | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -293,18 +300,23 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
         const data = (await res.json()) as { messages?: Message[] };
         const latestMessages = data.messages ?? [];
+        if (!isActive || activeSessionIdRef.current !== activeSessionId) return;
         const hasAssistantReply = latestMessages.some((item) => item.role === "assistant");
 
         if (hasAssistantReply) {
+          setShowThinkingBubble(false);
           setMessages((prev) => (isSameMessageHistory(prev, latestMessages) ? prev : latestMessages));
           stopPolling();
           return;
         }
 
         if (latestMessages.length !== 1) {
+          setShowThinkingBubble(false);
           stopPolling();
         }
-      } catch {}
+      } catch {
+        setShowThinkingBubble(false);
+      }
     };
 
     intervalId = setInterval(() => {
@@ -312,11 +324,13 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     }, 3000);
 
     timeoutId = setTimeout(() => {
+      setShowThinkingBubble(false);
       stopPolling();
     }, 90000);
 
     return () => {
       isActive = false;
+      setShowThinkingBubble(false);
       stopPolling();
     };
   }, [activeSessionId, currentUser?.id, historyLoading, messages, newChatParam, sessionIdParam]);
@@ -492,6 +506,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   async function handleSendMessage(messageText: string) {
     if (!messageText.trim()) return;
 
+    const requestSessionId = activeSessionId;
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -517,7 +533,16 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
       const data = (await res.json()) as { reply?: string; sessionId?: string };
       const assistantText = String(data.reply ?? "No reply returned");
-      const nextSessionId = data.sessionId ?? activeSessionId;
+      const nextSessionId = data.sessionId ?? requestSessionId;
+
+      const switchedSessions =
+        (requestSessionId !== null && activeSessionIdRef.current !== requestSessionId) ||
+        (requestSessionId === null && activeSessionIdRef.current !== null && activeSessionIdRef.current !== nextSessionId);
+
+      if (switchedSessions) {
+        setShowThinkingBubble(false);
+        return;
+      }
 
       setShowThinkingBubble(false);
 
@@ -594,8 +619,12 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       typingIntervalRef.current = setTimeout(typeNextWord, TYPING_MS_PER_WORD);
 
       await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
-    } catch (err: unknown) {
+    } catch {
       setShowThinkingBubble(false);
+      if (activeSessionIdRef.current !== requestSessionId) {
+        return;
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -656,6 +685,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     forceNewChatRef.current = true;
     setActiveSessionId(null);
     setMessages([]);
+    setShowThinkingBubble(false);
     try {
       localStorage.removeItem("activeSessionId");
     } catch {}
