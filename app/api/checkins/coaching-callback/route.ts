@@ -41,6 +41,67 @@ function getNormalizedReply(value: unknown): string {
   return extractReply(value).trim();
 }
 
+async function generateAndUpdateCoachingTitle(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  sessionId: string,
+  reply: string
+): Promise<void> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return;
+
+  try {
+    const { data: session } = await supabase
+      .from("chat_sessions")
+      .select("id, title")
+      .eq("id", sessionId)
+      .maybeSingle();
+
+    if (!session?.title) return;
+
+    // Only run once — skip if title already has 2 or more "—" separators
+    const dashCount = (session.title.match(/—/g) ?? []).length;
+    if (dashCount >= 2) return;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 20,
+        messages: [
+          {
+            role: "system",
+            content: "You generate short coaching session context labels. Given a coach's reply to an employee check-in, generate a 3-5 word label that captures the key theme or insight. Written in Title Case. No punctuation at the end. Respond with only the label. Nothing else.",
+          },
+          {
+            role: "user",
+            content: `Coach reply: ${reply.slice(0, 500)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+    const context = data.choices?.[0]?.message?.content?.trim();
+    if (!context || context.length === 0) return;
+
+    const updatedTitle = `${session.title} — ${context}`;
+    await supabase
+      .from("chat_sessions")
+      .update({ title: updatedTitle })
+      .eq("id", sessionId);
+
+    console.log("[coaching-callback] Session title updated", { sessionId, updatedTitle });
+  } catch (err) {
+    console.error("[coaching-callback] Title generation failed:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function POST(req: Request) {
   // Server-to-server callback from n8n, protected by COACHING_CALLBACK_SECRET.
   // Uses service-role client to bypass RLS since this is a backend-only write with secret validation.
@@ -126,6 +187,8 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+
+  void generateAndUpdateCoachingTitle(supabase, sessionId, reply);
 
   const requestId = crypto.randomUUID();
   const { error: eventError } = await supabase.from("chat_events").insert({

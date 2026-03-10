@@ -36,6 +36,42 @@ function truncateTitle(message: string) {
   return message.length > 48 ? message.slice(0, 48) : message;
 }
 
+async function generateChatTitle(userMessage: string, assistantReply: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 20,
+        messages: [
+          {
+            role: "system",
+            content: "You generate short chat session titles. Given a user message and assistant reply, generate a title that is 4-6 words maximum, captures the specific topic, is written in Title Case, has no punctuation at the end, and never starts with 'Chat About' or 'Discussion Of'. Respond with only the title. Nothing else.",
+          },
+          {
+            role: "user",
+            content: `User message: ${userMessage.slice(0, 300)}\n\nAssistant reply: ${assistantReply.slice(0, 300)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json() as { choices?: { message?: { content?: string } }[] };
+    const title = data.choices?.[0]?.message?.content?.trim();
+    return title && title.length > 0 ? title : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -153,16 +189,19 @@ export async function POST(request: Request) {
   }
 
   if (sessionCheck.title === "New chat") {
-    const nextTitle = truncateTitle(message);
-    const { error: updateError } = await supabase
-      .from("chat_sessions")
-      .update({ title: nextTitle })
-      .eq("id", sessionId)
-      .eq("user_id", user.id);
+    void (async () => {
+      const generatedTitle = await generateChatTitle(message, reply);
+      const nextTitle = generatedTitle ?? truncateTitle(message);
+      const { error: updateError } = await supabase
+        .from("chat_sessions")
+        .update({ title: nextTitle })
+        .eq("id", sessionId)
+        .eq("user_id", user.id);
 
-    if (updateError) {
-      console.error("[chat] Failed to update title:", updateError.message);
-    }
+      if (updateError) {
+        console.error("[chat] Failed to update title:", updateError.message);
+      }
+    })();
   }
 
   return NextResponse.json({ reply, sessionId });
