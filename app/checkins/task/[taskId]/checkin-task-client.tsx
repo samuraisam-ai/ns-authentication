@@ -96,6 +96,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
   const [pendingTasks, setPendingTasks] = useState<MenuTask[]>([]);
 
   const [banner, setBanner] = useState<{ type: "info" | "error" | "success"; text: string } | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState<1 | 2>(1);
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => setMounted(true), []);
@@ -255,7 +256,8 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
   const isDailyCheckout = task.template_key === "daily_checkout";
   const isWeekly = task.template_key === "weekly_checkin" || task.template_key === "weekly_checkout";
   const isDailyStyle = isDailyCheckin || isDailyCheckout;
-  const showDailySubmitDock = isDailyStyle && task.status !== "submitted" && Boolean(task.template_key);
+  const isOnboarding = task.template_key === "onboarding_profile";
+  const showDailySubmitDock = (isDailyStyle || isOnboarding) && task.status !== "submitted" && Boolean(task.template_key);
   const scheduledDate = new Date(task.scheduled_for);
   const scheduledDateLabel = Number.isNaN(scheduledDate.getTime())
     ? "--"
@@ -269,7 +271,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
     <main className={cx("min-h-screen text-slate-900", isDailyStyle ? "bg-[#eaeaea]" : "bg-white")} suppressHydrationWarning>
       {!mounted ? null : (
         <>
-          {isDailyCheckin || isDailyCheckout || isWeekly ? (
+          {isDailyCheckin || isDailyCheckout || isWeekly || isOnboarding ? (
             <>
               <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white px-5 py-4 md:px-10">
                 <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
@@ -329,7 +331,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                           isWeekly ? "min-w-0 whitespace-nowrap truncate text-xl" : "text-2xl"
                         )}
                       >
-                        {isWeekly ? "Weekly Check-out" : isDailyCheckout ? "Daily Check-out" : "Daily Check-in"}
+                        {isWeekly ? "Weekly Check-out" : isDailyCheckout ? "Daily Check-out" : isOnboarding ? "Complete Your Profile" : "Daily Check-in"}
                       </h1>
                     </div>
                     <span className="shrink-0 rounded-md bg-[#545454] px-3 py-1.5 text-sm font-bold text-white">{scheduledDateLabel}</span>
@@ -363,9 +365,13 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                         </div>
                       </div>
                     </>
+                  ) : isOnboarding ? (
+                    <p className="mt-3 text-sm text-slate-900">
+                      Help us get to know you. Your answers help your AI coach personalise your experience.
+                    </p>
                   ) : (
                     <p className="mt-3 text-sm text-slate-900">
-                      List your top three priorities for today below. It should be easy to know if you got it done or not.at the end of the day.
+                      List your top three priorities for today below. It should be easy to know if you got it done or not. at the end of the day.
                     </p>
                   )}
                 </div>
@@ -404,7 +410,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                       Task has no template assigned.
                     </div>
                   ) : (
-                    <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} />
+                    <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} onOnboardingStepChange={setOnboardingStep} />
                   )}
                 </div>
               </section>
@@ -418,7 +424,13 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                       disabled={submitting}
                       className="w-full rounded-2xl bg-[#d8cd72] py-3 text-sm font-bold text-white disabled:opacity-60"
                     >
-                      {submitting ? "Generating coaching…" : (isDailyCheckout ? "Submit Check-out" : "Submit Check-in")}
+                      {submitting
+                        ? "Saving..."
+                        : isOnboarding
+                        ? onboardingStep === 1 ? "Next →" : "Submit Profile"
+                        : isDailyCheckout
+                        ? "Submit Check-out"
+                        : "Submit Check-in"}
                     </button>
                   </div>
                 </div>
@@ -480,7 +492,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
                     Task has no template assigned.
                   </div>
                 ) : (
-                  <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} />
+                  <FormRenderer templateKey={task.template_key} onSubmit={handleSubmit} submitting={submitting} onOnboardingStepChange={setOnboardingStep} />
                 )}
               </div>
             </section>
@@ -497,10 +509,12 @@ function FormRenderer({
   templateKey,
   onSubmit,
   submitting,
+  onOnboardingStepChange,
 }: {
   templateKey: string;
   onSubmit: (answers: Record<string, unknown>, missing: string[]) => void;
   submitting: boolean;
+  onOnboardingStepChange?: (step: 1 | 2) => void;
 }) {
   const [formData, setFormData] = useState<Record<string, string | number | boolean | null>>({});
   const [openStatusFor, setOpenStatusFor] = useState<null | 1 | 2 | 3>(null);
@@ -540,7 +554,7 @@ function FormRenderer({
       "leases_count",
       "leases_explanation"
     ],
-    onboarding_profile: ["full_name", "role", "bio", "goals"],
+    onboarding_profile: ["full_name", "role"],
   };
 
   const missing = () => {
@@ -888,29 +902,264 @@ function FormRenderer({
   }
 
   if (templateKey === "onboarding_profile") {
+    const [onboardingStep, setOnboardingStep] = useState<1 | 2>(1);
+    const [onboardingRole, setOnboardingRole] = useState<string>("");
+
+    const roles = ["Sales", "Customer Care", "Cleaner", "Ops", "Marketing", "Admin"];
+
+    const tenureOptions = [
+      "Less than 1 year",
+      "1–3 years",
+      "3–5 years",
+      "5+ years",
+    ];
+
+    const challengeOptions: Record<string, string[]> = {
+      Sales: ["Prospecting", "Pitching", "Closing", "Follow-up", "None of the above"],
+      "Customer Care": ["Handling complaints", "Escalations", "High volume", "Difficult customers", "None of the above"],
+      Cleaner: ["Time pressure", "Equipment issues", "Coverage area", "Communication", "None of the above"],
+      Ops: ["System failures", "Team coordination", "Process gaps", "Reporting", "None of the above"],
+      Marketing: ["Content creation", "Paid ads", "Analytics", "Stakeholder alignment", "None of the above"],
+      Admin: ["Volume of tasks", "Prioritisation", "Communication gaps", "Tools and systems", "None of the above"],
+    };
+
+    const step2Questions = (role: string) => {
+      const challenges = challengeOptions[role] ?? [];
+      return (
+        <div className="space-y-4">
+          {/* Tenure */}
+          <div className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">How long have you been in this role?</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <select
+                required
+                value={String(formData.tenure ?? "")}
+                onChange={(e) => handleChange("tenure", e.target.value)}
+                className="w-full bg-white px-2 py-2 text-sm text-slate-900 outline-none"
+              >
+                <option value="">Select...</option>
+                {tenureOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Monthly target for Sales only */}
+          {role === "Sales" && (
+            <div className="relative rounded-lg shadow-sm">
+              <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                <div className="flex flex-1 items-center pl-7">
+                  <p className="text-sm font-semibold text-slate-800">What is your monthly target? (R)</p>
+                </div>
+              </div>
+              <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+                <input
+                  required
+                  type="number"
+                  placeholder="e.g. 50000"
+                  value={String(formData.monthly_target ?? "")}
+                  onChange={(e) => handleChange("monthly_target", e.target.value)}
+                  className="w-full bg-white px-2 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Challenge dropdown */}
+          <div className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">What part of your role do you find most challenging?</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <select
+                required
+                value={String(formData.challenge ?? "")}
+                onChange={(e) => handleChange("challenge", e.target.value)}
+                className="w-full bg-white px-2 py-2 text-sm text-slate-900 outline-none"
+              >
+                <option value="">Select...</option>
+                {challenges.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Challenge explanation — only if not "None of the above" */}
+          {formData.challenge && formData.challenge !== "None of the above" && (
+            <div className="relative rounded-lg shadow-sm">
+              <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                <div className="flex flex-1 items-center pl-7">
+                  <p className="text-sm font-semibold text-slate-800">Why is that challenging for you?</p>
+                </div>
+              </div>
+              <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+                <textarea
+                  required
+                  rows={1}
+                  value={String(formData.challenge_explanation ?? "")}
+                  onChange={(e) => handleChange("challenge_explanation", e.target.value)}
+                  onInput={(e) => {
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                  }}
+                  placeholder="Explain in your own words..."
+                  className="w-full resize-none overflow-hidden bg-white px-2 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Great day */}
+          <div className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">What does a great day at work look like for you?</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <textarea
+                required
+                rows={1}
+                value={String(formData.great_day ?? "")}
+                onChange={(e) => handleChange("great_day", e.target.value)}
+                onInput={(e) => {
+                  e.currentTarget.style.height = "auto";
+                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                }}
+                placeholder="Describe your ideal work day..."
+                className="w-full resize-none overflow-hidden bg-white px-2 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none"
+              />
+            </div>
+          </div>
+
+          {/* NetworkSpace goals */}
+          <div className="relative rounded-lg shadow-sm">
+            <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+              <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+              <div className="flex flex-1 items-center pl-7">
+                <p className="text-sm font-semibold text-slate-800">What are your goals in NetworkSpace?</p>
+              </div>
+            </div>
+            <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+              <textarea
+                required
+                rows={1}
+                value={String(formData.ns_goals ?? "")}
+                onChange={(e) => handleChange("ns_goals", e.target.value)}
+                onInput={(e) => {
+                  e.currentTarget.style.height = "auto";
+                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                }}
+                placeholder="What do you want to achieve here?"
+                className="w-full resize-none overflow-hidden bg-white px-2 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const handleOnboardingSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+
+      if (onboardingStep === 1) {
+        if (!formData.full_name || String(formData.full_name).trim() === "") return;
+        if (!onboardingRole) return;
+        handleChange("role", onboardingRole);
+        setOnboardingStep(2);
+        onOnboardingStepChange?.(2);
+        return;
+      }
+
+      // Step 2 submit — collect all answers and call onSubmit
+      const requiredStep2 = ["tenure", "challenge", "great_day", "ns_goals"];
+      if (onboardingRole === "Sales") requiredStep2.push("monthly_target");
+      if (formData.challenge && formData.challenge !== "None of the above") {
+        requiredStep2.push("challenge_explanation");
+      }
+
+      const missingFields = requiredStep2.filter((k) => {
+        const v = formData[k];
+        return v === undefined || v === null || String(v).trim() === "";
+      });
+
+      if (missingFields.length > 0) {
+        onSubmit(formData, missingFields);
+        return;
+      }
+
+      onSubmit({ ...formData, role: onboardingRole }, []);
+    };
+
     return (
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <Section title="Onboarding Profile">
-          <div>
-            <FieldLabel>Full Name</FieldLabel>
-            <InputBase type="text" required onChange={(e) => handleChange("full_name", e.target.value)} />
-          </div>
+      <form id="daily-checkin-form" onSubmit={handleOnboardingSubmit} className="space-y-4 pb-28">
+        {/* Step indicator */}
+        <div className="flex items-center gap-2 px-1 mb-2">
+          <div className={cx("h-2 flex-1 rounded-full transition-colors", onboardingStep >= 1 ? "bg-[#d8cd72]" : "bg-slate-200")} />
+          <div className={cx("h-2 flex-1 rounded-full transition-colors", onboardingStep >= 2 ? "bg-[#d8cd72]" : "bg-slate-200")} />
+        </div>
 
-          <div>
-            <FieldLabel>Role / Position</FieldLabel>
-            <InputBase type="text" required onChange={(e) => handleChange("role", e.target.value)} />
-          </div>
+        {onboardingStep === 1 ? (
+          <div className="space-y-4">
+            {/* Full Name */}
+            <div className="relative rounded-lg shadow-sm">
+              <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                <div className="flex flex-1 items-center pl-7">
+                  <p className="text-sm font-semibold text-slate-800">Full Name</p>
+                </div>
+              </div>
+              <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+                <input
+                  required
+                  type="text"
+                  placeholder="Your full name..."
+                  value={String(formData.full_name ?? "")}
+                  onChange={(e) => handleChange("full_name", e.target.value)}
+                  className="w-full bg-white px-2 py-2 text-sm text-slate-900 placeholder-[#b8ad56] outline-none"
+                />
+              </div>
+            </div>
 
-          <div>
-            <FieldLabel>Tell us about yourself</FieldLabel>
-            <TextareaBase required rows={5} onChange={(e) => handleChange("bio", e.target.value)} />
+            {/* Role dropdown */}
+            <div className="relative rounded-lg shadow-sm">
+              <div className="relative flex h-10 items-stretch rounded-t-lg bg-[#f7f8dc] pr-4">
+                <div className="absolute left-[-6px] top-0 h-10 w-3 rounded-full bg-[#d8cd72]" />
+                <div className="flex flex-1 items-center pl-7">
+                  <p className="text-sm font-semibold text-slate-800">Role / Position</p>
+                </div>
+              </div>
+              <div className="rounded-b-lg bg-white px-4 pb-3 pt-2.5 shadow-md">
+                <select
+                  required
+                  value={onboardingRole}
+                  onChange={(e) => setOnboardingRole(e.target.value)}
+                  className="w-full bg-white px-2 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="">Select your role...</option>
+                  {roles.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
-
-          <div>
-            <FieldLabel>What are your primary goals?</FieldLabel>
-            <TextareaBase required rows={4} onChange={(e) => handleChange("goals", e.target.value)} />
-          </div>
-        </Section>
+        ) : (
+          step2Questions(onboardingRole)
+        )}
       </form>
     );
   }

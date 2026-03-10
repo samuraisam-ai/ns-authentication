@@ -88,9 +88,10 @@ export default function EmailPasswordDemo({
   }, [supabase]);
 
   useEffect(() => {
-    if (isAuthedAndAuthorized && !fromAuth) {
-      router.replace("/workspace");
-    }
+    if (!isAuthedAndAuthorized) return;
+    const isOnRegisterPage = typeof window !== "undefined" && window.location.pathname === "/register";
+    if (isOnRegisterPage) return;
+    router.replace("/workspace");
   }, [fromAuth, isAuthedAndAuthorized, router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
