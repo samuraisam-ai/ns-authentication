@@ -95,14 +95,14 @@ AssistantMessageBubble.displayName = "AssistantMessageBubble";
 function ThinkingBubble() {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-2xl bg-white px-4 py-2 text-sm leading-6 text-slate-800">
-        <div className="flex items-center gap-2">
+      <div className="max-w-[85%] rounded-2xl bg-white px-4 py-3 text-sm text-slate-800">
+        <div className="flex items-center justify-center gap-2">
           <div className="flex items-center gap-1">
             <span className="thinking-dot" />
             <span className="thinking-dot" style={{ animationDelay: "0.15s" }} />
             <span className="thinking-dot" style={{ animationDelay: "0.3s" }} />
           </div>
-          <span className="text-slate-500">Thinking...</span>
+          <span className="leading-none text-slate-500">Thinking...</span>
         </div>
       </div>
     </div>
@@ -146,6 +146,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     if (!newChatParam && !forceNewChatRef.current) return;
     setActiveSessionId(null);
     setMessages([]);
+    setShowThinkingBubble(false);
     try {
       localStorage.removeItem("activeSessionId");
     } catch {}
@@ -176,6 +177,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       setSessionsLoading(false);
       setActiveSessionId(null);
       setMessages([]);
+      setShowThinkingBubble(false);
       setPendingTaskCount(0);
       return;
     }
@@ -446,6 +448,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       } else if (nextSessions.length === 0) {
         setActiveSessionId(null);
         setMessages([]);
+        setShowThinkingBubble(false);
       }
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -593,7 +596,6 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
     } catch (err: unknown) {
       setShowThinkingBubble(false);
-      const errorMessage = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
         {
@@ -623,6 +625,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
         ...prev,
       ]);
       setMessages([]);
+      setShowThinkingBubble(false);
       return newId;
     } catch (error) {
       setStatus(`Error: ${error instanceof Error ? error.message : String(error)}`);
