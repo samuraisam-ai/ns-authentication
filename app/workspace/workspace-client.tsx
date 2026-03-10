@@ -237,6 +237,9 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     const sessionMatchesUrl = Boolean(sessionIdParam) && activeSessionId === sessionIdParam;
     if (!sessionMatchesUrl || newChatParam) return;
 
+    // Wait until history has loaded before evaluating
+    if (historyLoading) return;
+
     const assistantCount = messages.filter((item) => item.role === "assistant").length;
     const seedMessage = messages[0];
     const shouldPollFreshCoachingSeed =
@@ -286,17 +289,17 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
     intervalId = setInterval(() => {
       void pollSessionHistory();
-    }, 2500);
+    }, 3000);
 
     timeoutId = setTimeout(() => {
       stopPolling();
-    }, 20000);
+    }, 90000);
 
     return () => {
       isActive = false;
       stopPolling();
     };
-  }, [activeSessionId, currentUser?.id, messages, newChatParam, sessionIdParam]);
+  }, [activeSessionId, currentUser?.id, historyLoading, messages, newChatParam, sessionIdParam]);
 
   async function fetchPendingTaskCount() {
     if (!currentUser?.id) {

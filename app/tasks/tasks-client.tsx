@@ -46,6 +46,7 @@ export default function TasksClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending");
+  const [nextTaskLoading, setNextTaskLoading] = useState(false);
 
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,6 +79,27 @@ export default function TasksClient() {
       setError(err instanceof Error ? err.message : "Failed to fetch tasks");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleStartNextTask() {
+    try {
+      setNextTaskLoading(true);
+      const res = await fetch("/api/tasks/next");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to fetch next task");
+      }
+      const data = await res.json();
+      if (!data.task) {
+        alert("No more tasks for today.");
+        return;
+      }
+      router.push(`/checkins/task/${data.task.id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setNextTaskLoading(false);
     }
   }
 
@@ -187,8 +209,15 @@ export default function TasksClient() {
           <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-7 pb-8 pt-4 md:px-10 md:pt-6">
             <section className="flex-1">
             <div className="mb-3">
-              <div>
+              <div className="flex items-center justify-between">
                 <h1 className="text-left text-2xl font-semibold">My Tasks</h1>
+                <button
+                  onClick={handleStartNextTask}
+                  disabled={nextTaskLoading}
+                  className="rounded-lg bg-[#cccd33] px-4 py-2 text-sm font-semibold text-black shadow-sm hover:bg-[#b8b92e] disabled:opacity-50 transition-colors"
+                >
+                  {nextTaskLoading ? "Finding..." : "Start Next Task"}
+                </button>
               </div>
             </div>
 
