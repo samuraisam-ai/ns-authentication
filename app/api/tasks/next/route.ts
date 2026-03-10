@@ -24,21 +24,17 @@ export async function GET() {
     const todayDate = now.getUTCDate();
     const periodKey = `${todayYear}-${String(todayMonth + 1).padStart(2, "0")}-${String(todayDate).padStart(2, "0")}`;
 
-    let templateKey: "daily_checkin" | "daily_checkout";
+    let templateKey: "daily_checkin";
     let scheduledForDate: Date;
 
     const morningCutoff = 8 * 60 + 30; // 08:30
-    const eveningCutoff = 16 * 60 + 45; // 16:45
 
-    if (currentTotalMinutes < morningCutoff) {
-      templateKey = "daily_checkin";
-      scheduledForDate = new Date(Date.UTC(todayYear, todayMonth, todayDate, 8, 30, 0));
-    } else if (currentTotalMinutes < eveningCutoff) {
-      templateKey = "daily_checkout";
-      scheduledForDate = new Date(Date.UTC(todayYear, todayMonth, todayDate, 16, 45, 0));
-    } else {
-      return NextResponse.json({ task: null, reason: "no_more_tasks_today" });
+    if (currentTotalMinutes >= morningCutoff) {
+      return NextResponse.json({ task: null, reason: "checkin_already_passed" });
     }
+
+    templateKey = "daily_checkin";
+    scheduledForDate = new Date(Date.UTC(todayYear, todayMonth, todayDate, 8, 30, 0));
 
     const { data: template, error: templateError } = await supabase
       .from("checkin_templates")

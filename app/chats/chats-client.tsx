@@ -68,7 +68,7 @@ export default function ChatsClient() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    router.push("/");
+    router.push("/email-password");
   }
 
   function formatDate(dateString: string) {

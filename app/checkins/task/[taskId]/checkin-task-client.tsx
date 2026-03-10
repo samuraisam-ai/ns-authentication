@@ -157,7 +157,7 @@ export default function CheckinTaskClient({ taskId }: { taskId: string; userId: 
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    router.push("/");
+    router.push("/email-password");
   }
 
   async function loadSessions() {

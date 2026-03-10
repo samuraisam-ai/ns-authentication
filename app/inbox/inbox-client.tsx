@@ -95,7 +95,7 @@ export default function InboxClient({ userId }: { userId: string }) {
 
   async function handleSignOut() {
     await supabaseAuth.auth.signOut();
-    router.push("/");
+    router.push("/email-password");
   }
 
   const unreadNotifications = notifications.filter((n) => !n.read_at);

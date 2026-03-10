@@ -91,7 +91,7 @@ export default function EmailPasswordDemo({
     if (!isAuthedAndAuthorized) return;
     const isOnRegisterPage = typeof window !== "undefined" && window.location.pathname === "/register";
     if (isOnRegisterPage) return;
-    router.replace("/workspace");
+    router.replace("/workspace?newChat=1");
   }, [fromAuth, isAuthedAndAuthorized, router]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -111,7 +111,7 @@ export default function EmailPasswordDemo({
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setStatus(error ? `Error: ${error.message}` : "Success: Signed in.");
-    if (!error) router.replace("/workspace");
+    if (!error) router.replace("/workspace?newChat=1");
   }
 
   async function handleForgotPassword() {

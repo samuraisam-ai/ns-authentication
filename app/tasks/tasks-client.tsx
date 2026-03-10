@@ -92,7 +92,7 @@ export default function TasksClient() {
       }
       const data = await res.json();
       if (!data.task) {
-        alert("No more tasks for today.");
+        alert("Check-in is no longer available early. It will be available before 08:30.");
         return;
       }
       router.push(`/checkins/task/${data.task.id}`);
@@ -131,7 +131,7 @@ export default function TasksClient() {
 
   async function handleSignOut() {
     await supabase.auth.signOut();
-    router.push("/");
+    router.push("/email-password");
   }
 
   function formatMockTime(value: string) {
@@ -216,7 +216,7 @@ export default function TasksClient() {
                   disabled={nextTaskLoading}
                   className="rounded-lg bg-[#cccd33] px-4 py-2 text-sm font-semibold text-black shadow-sm hover:bg-[#b8b92e] disabled:opacity-50 transition-colors"
                 >
-                  {nextTaskLoading ? "Finding..." : "Start Next Task"}
+                  {nextTaskLoading ? "Finding..." : "Early Check-in"}
                 </button>
               </div>
             </div>

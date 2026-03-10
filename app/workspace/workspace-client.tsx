@@ -501,6 +501,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     setStatus("");
     const { error } = await supabase.auth.signOut();
     if (error) setStatus(`Error: ${error.message}`);
+    else router.push("/email-password");
   }
 
   async function handleSendMessage(messageText: string) {
