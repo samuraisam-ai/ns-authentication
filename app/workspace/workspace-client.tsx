@@ -92,6 +92,23 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
 
 AssistantMessageBubble.displayName = "AssistantMessageBubble";
 
+function ThinkingBubble() {
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-2xl bg-white px-4 py-2 text-sm leading-6 text-slate-800">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="thinking-dot" />
+            <span className="thinking-dot" style={{ animationDelay: "0.15s" }} />
+            <span className="thinking-dot" style={{ animationDelay: "0.3s" }} />
+          </div>
+          <span className="text-slate-500">Thinking...</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorkspaceClient({ user: initialUser }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,6 +122,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showThinkingBubble, setShowThinkingBubble] = useState(false);
   const [status, setStatus] = useState("");
   const [mounted, setMounted] = useState(false);
 
@@ -480,6 +498,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setShowThinkingBubble(true);
 
     try {
       const res = await fetch("/api/chat", {
@@ -496,6 +515,8 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
       const data = (await res.json()) as { reply?: string; sessionId?: string };
       const assistantText = String(data.reply ?? "No reply returned");
       const nextSessionId = data.sessionId ?? activeSessionId;
+
+      setShowThinkingBubble(false);
 
       if (!activeSessionId && nextSessionId) setActiveSessionId(nextSessionId);
 
@@ -571,13 +592,14 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
       await loadSessions({ preferredSessionId: nextSessionId ?? activeSessionId ?? undefined });
     } catch (err: unknown) {
+      setShowThinkingBubble(false);
       const errorMessage = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 2).toString(),
           role: "assistant",
-          content: `Connection error talking to AI. ${errorMessage}`,
+          content: "I'm having trouble connecting. Please try again.",
         },
       ]);
     } finally {
@@ -758,6 +780,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
                       </div>
                     </div>
                   ))}
+                  {showThinkingBubble && <ThinkingBubble />}
                 </div>
               </div>
             )}
