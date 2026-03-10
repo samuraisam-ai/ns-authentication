@@ -79,8 +79,6 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
   content,
   isTyping = false,
 }: AssistantMessageBubbleProps) {
-  if (isTyping) return <>{content}</>;
-
   return (
     <div
       className="text-sm leading-6 text-slate-900 [&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-2 [&_h2]:text-[15px] [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_strong]:font-semibold"
@@ -305,8 +303,70 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
 
         if (hasAssistantReply) {
           setShowThinkingBubble(false);
-          setMessages((prev) => (isSameMessageHistory(prev, latestMessages) ? prev : latestMessages));
           stopPolling();
+
+          const assistantMessage = latestMessages.find((item) => item.role === "assistant");
+          const seedMessage = latestMessages.find((item) => item.role === "user");
+
+          if (!assistantMessage) {
+            setMessages((prev) => (isSameMessageHistory(prev, latestMessages) ? prev : latestMessages));
+            return;
+          }
+
+          const assistantText = assistantMessage.content ?? "";
+          const botMessageId = assistantMessage.id;
+
+          // Set seed message immediately, then start typewriter for assistant reply
+          setMessages(() => [
+            ...(seedMessage ? [seedMessage] : []),
+            {
+              ...assistantMessage,
+              content: "",
+              fullText: assistantText,
+              displayText: "",
+              isTyping: true,
+            },
+          ]);
+
+          const TYPING_MS_PER_WORD = 110;
+          const words = assistantText.split(" ");
+          let index = 0;
+
+          const getPauseForWord = (word: string) => {
+            if (/[.!?]$/.test(word)) return 220;
+            if (/[,:;]$/.test(word)) return 120;
+            return 0;
+          };
+
+          const typeNextWord = () => {
+            index += 1;
+            const nextDisplayText = words.slice(0, index).join(" ");
+            const done = index >= words.length;
+
+            setMessages((prev) =>
+              prev.map((item) =>
+                item.id === botMessageId
+                  ? {
+                      ...item,
+                      displayText: nextDisplayText,
+                      content: done ? assistantText : item.content,
+                      isTyping: !done,
+                    }
+                  : item
+              )
+            );
+
+            if (done) {
+              typingIntervalRef.current = null;
+              return;
+            }
+
+            const currentWord = words[index - 1] ?? "";
+            const nextDelay = TYPING_MS_PER_WORD + getPauseForWord(currentWord);
+            typingIntervalRef.current = setTimeout(typeNextWord, nextDelay);
+          };
+
+          typingIntervalRef.current = setTimeout(typeNextWord, TYPING_MS_PER_WORD);
           return;
         }
 
