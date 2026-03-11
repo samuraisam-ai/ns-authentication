@@ -84,6 +84,51 @@ function buildRawAnswersMessage(args: {
   return lines.join("\n");
 }
 
+  async function buildSummarisedSeedMessage(
+    templateTitle: string,
+    answers: Record<string, unknown>
+  ): Promise<string> {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return templateTitle;
+
+    try {
+      const answersText = Object.entries(answers)
+        .filter(([, v]) => typeof v === "string" && String(v).trim().length > 0)
+        .map(([k, v]) => `${k}: ${String(v).slice(0, 150)}`)
+        .join("\n")
+        .slice(0, 600);
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 100,
+          messages: [
+            {
+              role: "system",
+              content: "You summarise employee check-in answers into 1-2 warm, natural sentences from the employee's perspective. Write in first person. Be specific about what they said. No bullet points. No preamble. Just the summary.",
+            },
+            {
+              role: "user",
+              content: `Check-in type: ${templateTitle}\n\nAnswers:\n${answersText}`,
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) return templateTitle;
+      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+      const summary = data.choices?.[0]?.message?.content?.trim();
+      return summary && summary.length > 0 ? summary : templateTitle;
+    } catch {
+      return templateTitle;
+    }
+  }
+
 function getTemplateTitle(task: TaskWithTemplate): string {
   const templateValue = task.template;
   if (!templateValue) return "Check-in";
@@ -429,9 +474,9 @@ async function createCoachingSession(
     const sessionId = session.id;
     console.log("[checkins/submit] Chat session created", { sessionId });
 
-    // Build and insert user message with raw answers
+    // Build raw message for n8n webhook and system storage
     const timestamp = new Date().toISOString();
-    const userMessageContent = buildRawAnswersMessage({
+    const rawMessageContent = buildRawAnswersMessage({
       templateTitle,
       submissionId,
       taskId,
@@ -439,13 +484,33 @@ async function createCoachingSession(
       answers,
     });
 
+    // Build summarised message for display
+    const summarisedContent = await buildSummarisedSeedMessage(templateTitle, answers);
+
+    // Store raw as system message (hidden from UI, available for later use)
+    const { error: systemMessageError } = await supabase
+      .from("chat_messages")
+      .insert({
+        session_id: sessionId,
+        user_id: userId,
+        role: "system",
+        content: rawMessageContent,
+      });
+
+    if (systemMessageError) {
+      console.error("[checkins/submit] Failed to insert system message:", {
+        message: systemMessageError.message,
+      });
+    }
+
+    // Store summarised version as user message (visible in UI)
     const { error: userMessageError } = await supabase
       .from("chat_messages")
       .insert({
         session_id: sessionId,
         user_id: userId,
         role: "user",
-        content: userMessageContent,
+        content: summarisedContent,
       });
 
     if (userMessageError) {
@@ -471,7 +536,7 @@ async function createCoachingSession(
         taskId,
         userId,
         templateTitle,
-        message: userMessageContent,
+        message: rawMessageContent,
       };
 
       const safeWebhookUrl = (() => {

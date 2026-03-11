@@ -13,7 +13,7 @@ type Props = { user: User | null };
 
 type Message = {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   created_at?: string;
   isTyping?: boolean;
@@ -268,7 +268,6 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
     const shouldPollFreshCoachingSeed =
       messages.length === 1 &&
       seedMessage?.role === "user" &&
-      isCoachingSeedMessage(seedMessage.content) &&
       assistantCount === 0;
 
     if (!shouldPollFreshCoachingSeed) return;
@@ -848,7 +847,7 @@ export default function WorkspaceClient({ user: initialUser }: Props) {
             ) : (
               <div className="h-[calc(100vh-220px)] overflow-y-auto pb-40 pt-6">
                 <div className="space-y-3">
-                  {messages.map((item) => (
+                  {messages.filter((item) => item.role !== "system").map((item) => (
                     <div
                       key={item.id}
                       className={cx("flex", item.role === "user" ? "justify-end" : "justify-start")}
